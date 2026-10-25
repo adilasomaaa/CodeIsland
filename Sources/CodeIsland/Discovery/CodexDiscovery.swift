@@ -25,6 +25,7 @@ struct CodexProcessDiscoveryCandidate: Sendable {
 
 enum CodexTranscriptOrigin: Equatable, Sendable {
     case desktop
+    case vscode
     case cli
     case unknown
 }
@@ -204,6 +205,9 @@ enum CodexDiscovery {
         if originator.contains("desktop") {
             return .desktop
         }
+        if originator.contains("vscode") || originator.contains("vs code") {
+            return .vscode
+        }
         // Codex records every app-server client under `vscode`/`appServer`,
         // and a spawned thread keeps its parent's originator under an object
         // source. A client that names itself something other than Desktop
@@ -310,6 +314,7 @@ enum CodexDiscovery {
         now: Date = Date(),
         freshnessWindow: TimeInterval = 600,
         completionSettleWindow: TimeInterval = 30,
+        origin: CodexTranscriptOrigin = .desktop,
         fileManager: FileManager = .default
     ) -> [CodexDesktopThreadRecord] {
         let statePath = overrideStatePath ?? FileManager.default.homeDirectoryForCurrentUser
@@ -381,10 +386,11 @@ enum CodexDiscovery {
                 let databaseSource = SQLiteReader.sqliteColumnString(statement, index: 6) ?? ""
                 if databaseSource.hasPrefix("{\"subagent") {
                     // JSON source alone does not identify the owning surface.
-                    // Require positive Desktop provenance before namespacing it.
-                    guard transcriptOrigin == .desktop else { continue }
+                    // Require positive provenance before assigning the session
+                    // to either native app integration.
+                    guard transcriptOrigin == origin else { continue }
                 } else {
-                    guard transcriptOrigin != .cli else { continue }
+                    guard transcriptOrigin == origin else { continue }
                 }
 
                 let dbUpdatedAt = Date(timeIntervalSince1970: sqlite3_column_double(statement, 3))
@@ -497,6 +503,7 @@ enum CodexDiscovery {
                 files = candidates.filter { file in
                     switch codexTranscriptOrigin(path: file) {
                     case .desktop: return process.isDesktop
+                    case .vscode: return false
                     case .cli: return !process.isDesktop
                     case .unknown: return true
                     }
@@ -506,6 +513,7 @@ enum CodexDiscovery {
                     guard codexSessionMatchesCwd(path: file, cwd: processCwd) else { return false }
                     switch codexTranscriptOrigin(path: file) {
                     case .desktop: return process.isDesktop
+                    case .vscode: return false
                     case .cli: return !process.isDesktop
                     case .unknown: return true
                     }
@@ -636,6 +644,42 @@ enum CodexDiscovery {
                 status: record.status,
                 termBundleId: identity.termBundleId,
                 providerSessionId: identity.providerSessionId
+            )
+        }
+    }
+
+    /// Discover Codex VS Code extension sessions from Codex's state database.
+    /// The extension can communicate through its app-server without exposing
+    /// a standalone CLI process for process-table discovery to match.
+    static func findRecentCodexVSCodeSessions(
+        statePath: String? = nil,
+        now: Date = Date(),
+        fileManager: FileManager = .default
+    ) -> [DiscoveredSession] {
+        let resolvedStatePath = statePath ?? FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent(".codex/state_5.sqlite").path
+
+        return recentCodexDesktopThreadRecords(
+            statePath: resolvedStatePath,
+            now: now,
+            origin: .vscode,
+            fileManager: fileManager
+        ).map { record in
+            DiscoveredSession(
+                sessionId: record.sessionId,
+                cwd: record.cwd,
+                tty: nil,
+                model: record.model,
+                pid: nil,
+                modifiedAt: record.modifiedAt,
+                recentMessages: record.recentMessages,
+                source: "codex",
+                transcriptPath: record.transcriptPath,
+                parentSessionId: record.subagentMetadata?.parentThreadId,
+                subagentStatus: record.subagentStatus,
+                agentType: record.subagentMetadata?.agentType,
+                agentNickname: record.subagentMetadata?.agentNickname,
+                status: record.status
             )
         }
     }

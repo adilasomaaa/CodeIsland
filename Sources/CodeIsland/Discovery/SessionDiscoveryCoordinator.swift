@@ -44,7 +44,7 @@ final class SessionDiscoveryCoordinator {
     struct Scanners: Sendable {
         /// The full scan, over every enabled source.
         var sessions: @Sendable () -> [DiscoveredSession]
-        /// Codex Desktop threads from Codex's state database.
+        /// Codex Desktop and VS Code threads from Codex's state database.
         var codexDesktopSessions: @Sendable () -> [DiscoveredSession]
         /// The Cursor Agent Task index: a walk of `~/.cursor/projects`.
         var cursorSubagentIndex: @Sendable () -> CursorSubagentTranscriptIndex
@@ -54,9 +54,9 @@ final class SessionDiscoveryCoordinator {
         static let live = Scanners(
             sessions: { SessionDiscovery.findDiscoveredSessions() },
             codexDesktopSessions: {
-                ConfigInstaller.isEnabled(source: "codex")
-                    ? CodexDiscovery.findRecentCodexDesktopSessions()
-                    : []
+                guard ConfigInstaller.isEnabled(source: "codex") else { return [] }
+                return CodexDiscovery.findRecentCodexDesktopSessions()
+                    + CodexDiscovery.findRecentCodexVSCodeSessions()
             },
             cursorSubagentIndex: {
                 CursorSubagentTranscriptIndex.scan(home: FileManager.default.homeDirectoryForCurrentUser.path)
@@ -155,13 +155,17 @@ final class SessionDiscoveryCoordinator {
         now: Date,
         interval: TimeInterval = 6
     ) -> Bool {
-        guard runningBundleIdentifiers.contains(AppState.codexAppBundleId) else { return false }
+        let hasCodexHost = runningBundleIdentifiers.contains(AppState.codexAppBundleId)
+            || runningBundleIdentifiers.contains("com.microsoft.VSCode")
+            || runningBundleIdentifiers.contains("com.microsoft.VSCodeInsiders")
+        guard hasCodexHost else { return false }
         guard let lastPollAt else { return true }
         return now.timeIntervalSince(lastPollAt) >= interval
     }
 
-    /// The cleanup tick's Codex Desktop poll (`shouldPollCodexDesktopDiscovery`).
-    /// `runningBundleIdentifiers` is only asked for once the interval has
+    /// The cleanup tick's Codex host poll (`shouldPollCodexDesktopDiscovery`).
+    /// This includes VS Code because FSEvents can miss app-server updates to
+    /// the rollout/database pair. `runningBundleIdentifiers` is only asked for once the interval has
     /// elapsed: building it goes out to LaunchServices.
     func pollCodexDesktopIfDue(now: Date, runningBundleIdentifiers: () -> Set<String>) {
         guard !isStopped else { return }

@@ -110,6 +110,68 @@ enum ToolNameDisplay {
     }
 }
 
+private enum ExpandedPanelTab {
+    case all
+    case status
+    case agents
+    case spotify
+
+    static func groupingMode(_ value: String) -> Self {
+        switch value {
+        case "status": .status
+        case "cli": .agents
+        default: .all
+        }
+    }
+
+    var groupingModeValue: String? {
+        switch self {
+        case .all: "all"
+        case .status: "status"
+        case .agents: "cli"
+        case .spotify: nil
+        }
+    }
+
+    var nextAfterSwipe: Self? {
+        switch self {
+        case .all: .status
+        case .status: .agents
+        case .agents: .spotify
+        case .spotify: nil
+        }
+    }
+
+    var previousAfterSwipe: Self? {
+        switch self {
+        case .all: nil
+        case .status: .all
+        case .agents: .status
+        case .spotify: .agents
+        }
+    }
+}
+
+@MainActor
+private final class PanelSwipeMonitor {
+    private var monitor: Any?
+
+    func start(_ action: @escaping (CGFloat) -> Void) {
+        guard monitor == nil else { return }
+        monitor = NSEvent.addLocalMonitorForEvents(matching: .swipe) { event in
+            guard abs(event.deltaX) > abs(event.deltaY), event.deltaX != 0 else { return event }
+            action(event.deltaX)
+            return nil
+        }
+    }
+
+    func stop() {
+        guard let monitor else { return }
+        NSEvent.removeMonitor(monitor)
+        self.monitor = nil
+    }
+}
+
 struct NotchPanelView: View {
     var appState: AppState
     let hasNotch: Bool
@@ -118,9 +180,12 @@ struct NotchPanelView: View {
     let screenWidth: CGFloat
 
     @State private var spotifyMonitor = SpotifyNowPlayingMonitor()
+    @State private var expandedPanelTab = ExpandedPanelTab.all
+    @State private var panelSwipeMonitor = PanelSwipeMonitor()
 
     @AppStorage(SettingsKey.contentFontSize) private var contentFontSize = SettingsDefaults.contentFontSize
     @AppStorage(SettingsKey.showAgentDetails) private var showAgentDetails = SettingsDefaults.showAgentDetails
+    @AppStorage(SettingsKey.sessionGroupingMode) private var sessionGroupingMode = SettingsDefaults.sessionGroupingMode
     @AppStorage(SettingsKey.smartSuppress) private var smartSuppress = SettingsDefaults.smartSuppress
     @AppStorage(SettingsKey.hideWhenNoSession) private var hideWhenNoSession = SettingsDefaults.hideWhenNoSession
     @AppStorage(SettingsKey.showToolStatus) private var showToolStatus = SettingsDefaults.showToolStatus
@@ -153,7 +218,15 @@ struct NotchPanelView: View {
     /// Measured width of the collapsed right wing (0 until first laid out).
     @State private var rightWingWidth: CGFloat = 0
 
-    private var isSpotifyPlaying: Bool { spotifyMonitor.track != nil }
+    private var isSpotifyPlaying: Bool { spotifyMonitor.track != nil && (spotifyMonitor.track?.isPlaying ?? false) }
+    private var hasAiPriority: Bool {
+        appState.status != .idle ||
+        appState.activeSessionCount > 0 ||
+        appState.surface.isCard ||
+        appState.hiddenPendingQuestionSessionId != nil ||
+        appState.followUps.hintActive ||
+        appState.glanceCompletionActive
+    }
     private var isActive: Bool { !appState.sessions.isEmpty || isSpotifyPlaying }
     private var placement: PanelPlacement { PanelPlacement(rawValue: panelPlacementRaw) ?? .center }
     private var isFloating: Bool { panelStyleRaw == PanelStyle.floating.rawValue }
@@ -181,6 +254,25 @@ struct NotchPanelView: View {
     /// once the surface expands (from hover or any other path) it disappears.
     private var shouldShowPrehover: Bool {
         showBar && !shouldShowExpanded && hoverPhase == .prehover
+    }
+
+    @ViewBuilder
+    private var expandedSessionContent: some View {
+        if expandedPanelTab == .spotify {
+            SpotifyNowPlayingView(monitor: spotifyMonitor)
+                .transition(.blurFade.combined(with: .move(edge: .top)))
+        } else {
+            SessionListView(
+                appState: appState,
+                onlySessionId: nil,
+                spotifyMonitor: expandedPanelTab == .all ? spotifyMonitor : nil,
+                onSelectSpotifyTab: {
+                    withAnimation(.easeInOut(duration: 0.2)) {
+                        expandedPanelTab = .spotify
+                    }
+                }
+            )
+        }
     }
 
     private var collapsedRecapTooltip: String {
@@ -234,7 +326,8 @@ struct NotchPanelView: View {
     private var collapsedBarWidth: CGFloat {
         // Immediate hover acknowledgement: a slight widen while the expand delay runs
         let prehoverExtra: CGFloat = shouldShowPrehover ? NotchHoverInteraction.prehoverWidthDelta : 0
-        return effectiveNotchW + compactWingWidth * 2 + collapsedStatusExtra + prehoverExtra
+        let musicExtra: CGFloat = (isSpotifyPlaying && !hasAiPriority) ? (usesPhysicalNotch ? 60 : 40) : 0
+        return effectiveNotchW + compactWingWidth * 2 + collapsedStatusExtra + prehoverExtra + musicExtra
     }
 
     /// Status and tool-status reserves, split evenly between the two wings.
@@ -263,24 +356,79 @@ struct NotchPanelView: View {
         )
     }
 
+    @ViewBuilder
+    private var compactBarHStack: some View {
+        let musicActive = isSpotifyPlaying && !hasAiPriority
+        let showMusicInCenter = !shouldShowExpanded && !usesPhysicalNotch && showToolStatus && musicActive
+        let showMusicInRightWing = !shouldShowExpanded && (usesPhysicalNotch || !showToolStatus) && musicActive
+
+        HStack(spacing: 0) {
+            CompactLeftWing(
+                appState: appState,
+                expanded: shouldShowExpanded,
+                mascotSize: mascotSize,
+                hasNotch: usesPhysicalNotch,
+                showToolStatus: showToolStatus,
+                selectedPanelTab: $expandedPanelTab
+            )
+            if usesPhysicalNotch && !shouldShowExpanded {
+                Spacer(minLength: effectiveNotchW)
+            } else if !shouldShowExpanded && showToolStatus {
+                CompactToolStatus(
+                    appState: appState,
+                    spotifyTrack: showMusicInCenter ? spotifyMonitor.track : nil
+                )
+                Spacer(minLength: 0)
+            } else {
+                Spacer(minLength: 0)
+            }
+            CompactRightWing(
+                appState: appState,
+                expanded: shouldShowExpanded,
+                hasNotch: usesPhysicalNotch,
+                spotifyTrack: showMusicInRightWing ? spotifyMonitor.track : nil
+            )
+        }
+        .frame(height: notchHeight)
+    }
+
+    private var musicChinWidth: CGFloat {
+        min(panelWidth - 64, max(260, panelWidth * 0.68))
+    }
+    private var musicChinHeight: CGFloat { 22 }
+
+    private var hasMusicChin: Bool {
+        !shouldShowExpanded && isSpotifyPlaying && !hasAiPriority && spotifyMonitor.currentLyricLine != nil && !(spotifyMonitor.currentLyricLine?.isEmpty ?? true)
+    }
+
+    @ViewBuilder
+    private var collapsedMusicLyricBar: some View {
+        if hasMusicChin,
+           let line = spotifyMonitor.currentLyricLine, !line.isEmpty {
+            MarqueeText(
+                text: line,
+                font: .system(size: 10.5, weight: .medium, design: .monospaced),
+                color: .white.opacity(0.92)
+            )
+            .frame(width: max(80, musicChinWidth - 32), height: musicChinHeight)
+            .frame(maxWidth: .infinity, alignment: .center)
+            .padding(.bottom, 2)
+            .transition(.asymmetric(
+                insertion: .opacity.combined(with: .move(edge: .top)),
+                removal: .opacity
+            ))
+        }
+    }
+
     var body: some View {
         VStack(spacing: 0) {
             VStack(spacing: 0) {
                 if showBar {
                     // Active: compact bar — wider version when expanded
-                    HStack(spacing: 0) {
-                        CompactLeftWing(appState: appState, expanded: shouldShowExpanded, mascotSize: mascotSize, hasNotch: usesPhysicalNotch, showToolStatus: showToolStatus)
-                        if usesPhysicalNotch && !shouldShowExpanded {
-                            Spacer(minLength: effectiveNotchW)
-                        } else if !shouldShowExpanded && showToolStatus {
-                            CompactToolStatus(appState: appState)
-                            Spacer(minLength: 0)
-                        } else {
-                            Spacer(minLength: 0)
-                        }
-                        CompactRightWing(appState: appState, expanded: shouldShowExpanded, hasNotch: usesPhysicalNotch)
+                    VStack(spacing: 0) {
+                        compactBarHStack
+                        collapsedMusicLyricBar
                     }
-                    .frame(height: notchHeight)
                     // Recap on hover while collapsed — shows whenever hover
                     // doesn't expand the panel (smart suppress with the
                     // terminal frontmost); expanded cards show it inline.
@@ -325,14 +473,6 @@ struct NotchPanelView: View {
                         .stroke(.white.opacity(0.15), style: StrokeStyle(lineWidth: 0.5, dash: [4, 3]))
                         .frame(height: 0.5)
                         .padding(.horizontal, 12)
-
-                    if isSpotifyPlaying {
-                        SpotifyLyricsPanel(monitor: spotifyMonitor)
-                            .padding(.horizontal, 16)
-                            .padding(.top, 12)
-                            .padding(.bottom, 4)
-                            .transition(.blurFade.combined(with: .move(edge: .top)))
-                    }
 
                     switch appState.surface {
                     case .approvalCard(let sid):
@@ -409,7 +549,7 @@ struct NotchPanelView: View {
                         SessionListView(appState: appState, onlySessionId: appState.justCompletedSessionId)
                             .transition(.blurFade.combined(with: .move(edge: .top)))
                     case .sessionList:
-                        SessionListView(appState: appState, onlySessionId: nil)
+                        expandedSessionContent
                             .transition(.blurFade.combined(with: .move(edge: .top)))
                     case .collapsed:
                         EmptyView()
@@ -420,17 +560,45 @@ struct NotchPanelView: View {
             .frame(width: panelWidth)
             .clipped()
             .background {
-                if isFloating {
-                    RoundedRectangle(cornerRadius: shouldShowExpanded ? 20 : 14, style: .continuous)
+                if shouldShowExpanded {
+                    if isFloating {
+                        RoundedRectangle(cornerRadius: 20, style: .continuous)
+                            .fill(.black)
+                            .shadow(color: .black.opacity(0.28), radius: 16, x: 0, y: 6)
+                    } else {
+                        NotchPanelShape(
+                            topExtension: 14,
+                            bottomRadius: 24,
+                            minHeight: notchHeight
+                        )
                         .fill(.black)
-                        .shadow(color: .black.opacity(0.28), radius: 16, x: 0, y: 6)
-                } else {
-                    NotchPanelShape(
-                        topExtension: shouldShowExpanded ? 14 : 3,
-                        bottomRadius: shouldShowExpanded ? 24 : 12,
-                        minHeight: notchHeight
+                    }
+                } else if hasMusicChin {
+                    IslandChinShape(
+                        barHeight: notchHeight,
+                        chinWidth: musicChinWidth,
+                        chinHeight: musicChinHeight,
+                        isFloating: isFloating,
+                        topExtension: 3,
+                        barCornerRadius: 14,
+                        chinCornerRadius: 11,
+                        filletRadius: 10
                     )
                     .fill(.black)
+                    .shadow(color: isFloating ? .black.opacity(0.28) : .clear, radius: 16, x: 0, y: 6)
+                } else {
+                    if isFloating {
+                        RoundedRectangle(cornerRadius: 14, style: .continuous)
+                            .fill(.black)
+                            .shadow(color: .black.opacity(0.28), radius: 16, x: 0, y: 6)
+                    } else {
+                        NotchPanelShape(
+                            topExtension: 3,
+                            bottomRadius: 12,
+                            minHeight: notchHeight
+                        )
+                        .fill(.black)
+                    }
                 }
             }
             .offset(y: curtainOffset)
@@ -600,8 +768,43 @@ struct NotchPanelView: View {
         .onChange(of: spotifyMonitor.track?.identity) { _, identity in
             appState.spotifyIsPlaying = identity != nil
         }
+        .onAppear {
+            if expandedPanelTab != .spotify {
+                expandedPanelTab = .groupingMode(sessionGroupingMode)
+            }
+            updatePanelSwipeMonitor()
+        }
+        .onChange(of: sessionGroupingMode) { _, newMode in
+            if expandedPanelTab != .spotify {
+                expandedPanelTab = .groupingMode(newMode)
+            }
+        }
+        .onChange(of: shouldShowExpanded) { _, _ in updatePanelSwipeMonitor() }
+        .onChange(of: appState.surface) { _, _ in updatePanelSwipeMonitor() }
+        .onDisappear { panelSwipeMonitor.stop() }
         .task { await spotifyMonitor.pollContinuously() }
         .animation(NotchAnimation.open, value: appState.surface)
+    }
+
+    private func updatePanelSwipeMonitor() {
+        guard shouldShowExpanded, appState.surface == .sessionList else {
+            panelSwipeMonitor.stop()
+            return
+        }
+        let selectedTab = $expandedPanelTab
+        let groupingMode = $sessionGroupingMode
+        panelSwipeMonitor.start { deltaX in
+            withAnimation(NotchAnimation.open) {
+                let destination = deltaX < 0
+                    ? selectedTab.wrappedValue.nextAfterSwipe
+                    : selectedTab.wrappedValue.previousAfterSwipe
+                guard let destination else { return }
+                selectedTab.wrappedValue = destination
+                if let mode = destination.groupingModeValue {
+                    groupingMode.wrappedValue = mode
+                }
+            }
+        }
     }
 }
 
@@ -615,6 +818,7 @@ private struct CompactLeftWing: View {
     let mascotSize: CGFloat
     let hasNotch: Bool
     let showToolStatus: Bool
+    @Binding var selectedPanelTab: ExpandedPanelTab
     @AppStorage(SettingsKey.sessionGroupingMode) private var groupingMode = SettingsDefaults.sessionGroupingMode
     // Bound via @AppStorage so flipping the default mascot in Settings rerenders this view
     // even when AppState.primarySource wasn't recomputed (no session mutations in flight).
@@ -651,9 +855,7 @@ private struct CompactLeftWing: View {
         HStack(spacing: 6) {
             if expanded {
                 AppLogoView(size: 36, showBackground: false)
-                if appState.sessions.count > 1 {
-                    SessionGroupingTabs(mode: $groupingMode)
-                }
+                SessionGroupingTabs(mode: $groupingMode, selectedPanelTab: $selectedPanelTab)
             } else {
                 MascotView(source: displaySource, status: displayStatus, size: mascotSize)
                     .id(displaySource)
@@ -728,6 +930,7 @@ struct SessionGroupingTab {
         SessionGroupingTab(tag: "all", pixelLabel: "ALL", shortPixelLabel: "ALL", nameKey: "group_all"),
         SessionGroupingTab(tag: "status", pixelLabel: "STATUS", shortPixelLabel: "STA", nameKey: "group_status"),
         SessionGroupingTab(tag: "cli", pixelLabel: "AGENT", shortPixelLabel: "AGT", nameKey: "group_cli"),
+        SessionGroupingTab(tag: "spotify", pixelLabel: "MUSIC", shortPixelLabel: "MUS", nameKey: "spotify_tab"),
     ]
 }
 
@@ -796,6 +999,7 @@ private struct CompactRightWing: View {
     var appState: AppState
     let expanded: Bool
     let hasNotch: Bool
+    var spotifyTrack: SpotifyTrack? = nil
     @ObservedObject private var l10n = L10n.shared
     @AppStorage(SettingsKey.soundEnabled) private var soundEnabled = SettingsDefaults.soundEnabled
     @AppStorage(SettingsKey.showToolStatus) private var showToolStatus = SettingsDefaults.showToolStatus
@@ -875,36 +1079,55 @@ private struct CompactRightWing: View {
                         .symbolEffect(.pulse, options: .repeating, isActive: !reduceMotion)
                 }
 
+                // Track title if music is playing
+                if let track = spotifyTrack {
+                    HStack(spacing: 4) {
+                        Image(systemName: "music.note")
+                            .font(.system(size: 9, weight: .semibold))
+                            .foregroundStyle(Color(red: 0.12, green: 0.82, blue: 0.40))
+                        Text(track.title)
+                            .font(.system(size: 11, weight: .medium, design: .monospaced))
+                            .foregroundStyle(.white.opacity(0.9))
+                            .lineLimit(1)
+                            .frame(maxWidth: hasNotch ? 110 : 160, alignment: .leading)
+                    }
+                    .transition(.opacity)
+                }
+
                 if showToolStatus {
                     // Detailed mode: session count (project name is shown in center on non-notch)
-                    HStack(spacing: 1) {
-                        let active = appState.activeSessionCount
-                        let total = appState.totalSessionCount
-                        if active > 0 {
-                            Text("\(active)")
-                                .foregroundStyle(Color(red: 0.4, green: 1.0, blue: 0.5))
-                            Text("/")
-                                .foregroundStyle(.white.opacity(0.5))
+                    if appState.totalSessionCount > 0 || spotifyTrack == nil {
+                        HStack(spacing: 1) {
+                            let active = appState.activeSessionCount
+                            let total = appState.totalSessionCount
+                            if active > 0 {
+                                Text("\(active)")
+                                    .foregroundStyle(Color(red: 0.4, green: 1.0, blue: 0.5))
+                                Text("/")
+                                    .foregroundStyle(.white.opacity(0.5))
+                            }
+                            Text("\(total)")
+                                .foregroundStyle(.white.opacity(0.9))
                         }
-                        Text("\(total)")
-                            .foregroundStyle(.white.opacity(0.9))
+                        .font(.system(size: 12, weight: .semibold, design: .monospaced))
                     }
-                    .font(.system(size: 12, weight: .semibold, design: .monospaced))
                 } else {
                     // Simple mode: original session count only
-                    HStack(spacing: 1) {
-                        let active = appState.activeSessionCount
-                        let total = appState.totalSessionCount
-                        if active > 0 {
-                            Text("\(active)")
-                                .foregroundStyle(Color(red: 0.4, green: 1.0, blue: 0.5))
-                            Text("/")
-                                .foregroundStyle(.white.opacity(0.5))
+                    if appState.totalSessionCount > 0 || spotifyTrack == nil {
+                        HStack(spacing: 1) {
+                            let active = appState.activeSessionCount
+                            let total = appState.totalSessionCount
+                            if active > 0 {
+                                Text("\(active)")
+                                    .foregroundStyle(Color(red: 0.4, green: 1.0, blue: 0.5))
+                                Text("/")
+                                    .foregroundStyle(.white.opacity(0.5))
+                            }
+                            Text("\(total)")
+                                .foregroundStyle(.white.opacity(0.9))
                         }
-                        Text("\(total)")
-                            .foregroundStyle(.white.opacity(0.9))
+                        .font(.system(size: 13, weight: .bold, design: .monospaced))
                     }
-                    .font(.system(size: 13, weight: .bold, design: .monospaced))
                 }
             }
         }
@@ -992,6 +1215,7 @@ struct CompactContextLabel: View {
 /// Keeps the last tool visible for a short linger period to avoid flashing.
 private struct CompactToolStatus: View {
     var appState: AppState
+    var spotifyTrack: SpotifyTrack? = nil
 
     /// Single source of truth: all fields derive from the same session.
     private var displaySessionId: String? {
@@ -1070,6 +1294,18 @@ private struct CompactToolStatus: View {
             } else if displayStatus == .processing {
                 TypingIndicator(fontSize: 11, label: L10n.shared["typing_thinking"], bright: true)
                     .id("thinking-\(appState.rotatingSessionId ?? "")")
+            } else if let track = spotifyTrack {
+                HStack(spacing: 5) {
+                    Image(systemName: "music.note")
+                        .font(.system(size: 10, weight: .semibold))
+                        .foregroundStyle(Color(red: 0.12, green: 0.82, blue: 0.40))
+                    Text("\(track.title) · \(track.artist)")
+                        .font(.system(size: 11, weight: .medium, design: .monospaced))
+                        .foregroundStyle(.white.opacity(0.85))
+                        .lineLimit(1)
+                        .truncationMode(.tail)
+                }
+                .transition(.opacity)
             }
         }
         .font(.system(size: 11, weight: .medium, design: .monospaced))
@@ -1239,10 +1475,10 @@ struct QuitConfirmButton: View {
     }
 }
 
-/// The grouping tabs in the 5×7 pixel font, spelled out (ALL · STATUS ·
-/// AGENT) where the header has room for them.
+/// Grouping and media tabs in the 5×7 pixel font.
 private struct SessionGroupingTabs: View {
     @Binding var mode: String
+    @Binding var selectedPanelTab: ExpandedPanelTab
     @Environment(\.sessionGroupingTabsRoom) private var room
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @ObservedObject private var l10n = L10n.shared
@@ -1257,9 +1493,14 @@ private struct SessionGroupingTabs: View {
         let short = layout.usesShortLabels(room: room)
         HStack(spacing: layout.spacing) {
             ForEach(SessionGroupingTab.all, id: \.tag) { tab in
-                let selected = mode == tab.tag
+                let panelTab = ExpandedPanelTab.groupingMode(tab.tag)
+                let tabSelection: ExpandedPanelTab = tab.tag == "spotify" ? .spotify : panelTab
+                let selected = selectedPanelTab == tabSelection
                 Button {
-                    withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.15)) { mode = tab.tag }
+                    withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.15)) {
+                        selectedPanelTab = tabSelection
+                        if let modeValue = tabSelection.groupingModeValue { mode = modeValue }
+                    }
                 } label: {
                     PixelText(
                         text: short ? tab.shortPixelLabel : tab.pixelLabel,
@@ -1278,8 +1519,8 @@ private struct SessionGroupingTabs: View {
                 .onHover { hoveredTag = $0 ? tab.tag : (hoveredTag == tab.tag ? nil : hoveredTag) }
                 // The pixel glyphs are drawn, not text: without a label
                 // VoiceOver reads nothing.
-                .help(l10n[tab.nameKey])
-                .accessibilityLabel(l10n[tab.nameKey])
+                .help(tab.tag == "spotify" ? "Spotify · swipe with two fingers to switch tabs" : l10n[tab.nameKey])
+                .accessibilityLabel(tab.tag == "spotify" ? "Spotify" : l10n[tab.nameKey])
                 .accessibilityAddTraits(selected ? .isSelected : [])
             }
         }
@@ -2897,6 +3138,8 @@ private struct SessionListView: View {
     var appState: AppState
     /// When set, only show this session (auto-expand on completion)
     var onlySessionId: String? = nil
+    var spotifyMonitor: SpotifyNowPlayingMonitor? = nil
+    var onSelectSpotifyTab: (() -> Void)? = nil
     @AppStorage(SettingsKey.sessionGroupingMode) private var groupingMode = SettingsDefaults.sessionGroupingMode
     @AppStorage(SettingsKey.maxVisibleSessions) private var maxVisibleSessions = SettingsDefaults.maxVisibleSessions
     @AppStorage(SettingsKey.showUsageStats) private var showUsageStats = SettingsDefaults.showUsageStats
@@ -3032,6 +3275,12 @@ private struct SessionListView: View {
             )
             : (0, 0)
         let content = VStack(spacing: density == .compact ? CompactSessionRowMetrics.spacing : 6) {
+            if groupingMode == "all" && onlySessionId == nil,
+               let spotify = spotifyMonitor,
+               spotify.track != nil {
+                SpotifyMiniCard(monitor: spotify, onOpenFull: onSelectSpotifyTab)
+            }
+
             ForEach(groups, id: \.header) { group in
                 if !group.header.isEmpty {
                     HStack(spacing: 6) {
@@ -5146,6 +5395,141 @@ private struct NotchPanelShape: Shape {
     }
 }
 
+// MARK: - Island Chin Shape (Top bar with centered downward droplet for lyrics)
+
+private struct IslandChinShape: Shape {
+    var barHeight: CGFloat
+    var chinWidth: CGFloat
+    var chinHeight: CGFloat
+    var isFloating: Bool
+    var topExtension: CGFloat = 3
+    var barCornerRadius: CGFloat = 14
+    var chinCornerRadius: CGFloat = 11
+    var filletRadius: CGFloat = 10
+
+    var animatableData: CGFloat {
+        get { chinHeight }
+        set { chinHeight = newValue }
+    }
+
+    func path(in rect: CGRect) -> Path {
+        let minX = rect.minX
+        let maxX = rect.maxX
+        let minY = rect.minY
+        let barBottomY = minY + barHeight
+        let actualChinH = max(0, chinHeight)
+        let chinBottomY = barBottomY + actualChinH
+        let midX = rect.midX
+        let chinHalfW = min(chinWidth / 2, max(40, (rect.width - 2 * (barCornerRadius + filletRadius)) / 2))
+        let chinMinX = midX - chinHalfW
+        let chinMaxX = midX + chinHalfW
+
+        let actualChinRadius = min(chinCornerRadius, actualChinH / 2)
+        let actualFillet = min(filletRadius, actualChinH / 2)
+
+        var p = Path()
+
+        if isFloating {
+            p.move(to: CGPoint(x: minX + barCornerRadius, y: minY))
+            p.addLine(to: CGPoint(x: maxX - barCornerRadius, y: minY))
+            p.addCurve(
+                to: CGPoint(x: maxX, y: minY + barCornerRadius),
+                control1: CGPoint(x: maxX - barCornerRadius * 0.45, y: minY),
+                control2: CGPoint(x: maxX, y: minY + barCornerRadius * 0.45)
+            )
+            p.addLine(to: CGPoint(x: maxX, y: barBottomY - barCornerRadius))
+        } else {
+            let ext = topExtension
+            p.move(to: CGPoint(x: minX - ext, y: minY))
+            p.addLine(to: CGPoint(x: maxX + ext, y: minY))
+            p.addCurve(
+                to: CGPoint(x: maxX, y: minY + ext),
+                control1: CGPoint(x: maxX + ext * 0.35, y: minY),
+                control2: CGPoint(x: maxX, y: minY + ext * 0.35)
+            )
+            p.addLine(to: CGPoint(x: maxX, y: barBottomY - barCornerRadius))
+        }
+
+        // Bottom-right corner of right wing
+        p.addCurve(
+            to: CGPoint(x: maxX - barCornerRadius, y: barBottomY),
+            control1: CGPoint(x: maxX, y: barBottomY - barCornerRadius * 0.45),
+            control2: CGPoint(x: maxX - barCornerRadius * 0.45, y: barBottomY)
+        )
+
+        if actualChinH > 0.5 {
+            // Right wing bottom edge
+            p.addLine(to: CGPoint(x: chinMaxX + actualFillet, y: barBottomY))
+
+            // Right fillet (concave curve down into chin)
+            p.addCurve(
+                to: CGPoint(x: chinMaxX, y: barBottomY + actualFillet),
+                control1: CGPoint(x: chinMaxX + actualFillet * 0.45, y: barBottomY),
+                control2: CGPoint(x: chinMaxX, y: barBottomY + actualFillet * 0.45)
+            )
+
+            // Right edge of chin
+            p.addLine(to: CGPoint(x: chinMaxX, y: chinBottomY - actualChinRadius))
+
+            // Bottom-right corner of chin
+            p.addCurve(
+                to: CGPoint(x: chinMaxX - actualChinRadius, y: chinBottomY),
+                control1: CGPoint(x: chinMaxX, y: chinBottomY - actualChinRadius * 0.45),
+                control2: CGPoint(x: chinMaxX - actualChinRadius * 0.45, y: chinBottomY)
+            )
+
+            // Bottom edge of chin
+            p.addLine(to: CGPoint(x: chinMinX + actualChinRadius, y: chinBottomY))
+
+            // Bottom-left corner of chin
+            p.addCurve(
+                to: CGPoint(x: chinMinX, y: chinBottomY - actualChinRadius),
+                control1: CGPoint(x: chinMinX, y: chinBottomY - actualChinRadius * 0.45),
+                control2: CGPoint(x: chinMinX, y: chinBottomY - actualChinRadius * 0.45)
+            )
+
+            // Left edge of chin
+            p.addLine(to: CGPoint(x: chinMinX, y: barBottomY + actualFillet))
+
+            // Left fillet (concave curve up into left wing)
+            p.addCurve(
+                to: CGPoint(x: chinMinX - actualFillet, y: barBottomY),
+                control1: CGPoint(x: chinMinX, y: barBottomY + actualFillet * 0.45),
+                control2: CGPoint(x: chinMinX - actualFillet * 0.45, y: barBottomY)
+            )
+        }
+
+        // Left wing bottom edge
+        p.addLine(to: CGPoint(x: minX + barCornerRadius, y: barBottomY))
+
+        // Bottom-left corner of left wing
+        p.addCurve(
+            to: CGPoint(x: minX, y: barBottomY - barCornerRadius),
+            control1: CGPoint(x: minX, y: barBottomY - barCornerRadius * 0.45),
+            control2: CGPoint(x: minX - barCornerRadius * 0.45, y: barBottomY)
+        )
+
+        if isFloating {
+            p.addLine(to: CGPoint(x: minX, y: minY + barCornerRadius))
+            p.addCurve(
+                to: CGPoint(x: minX + barCornerRadius, y: minY),
+                control1: CGPoint(x: minX, y: minY + barCornerRadius * 0.45),
+                control2: CGPoint(x: minX + barCornerRadius * 0.45, y: minY)
+            )
+        } else {
+            let ext = topExtension
+            p.addLine(to: CGPoint(x: minX, y: minY + ext))
+            p.addCurve(
+                to: CGPoint(x: minX - ext, y: minY),
+                control1: CGPoint(x: minX, y: minY + ext * 0.35),
+                control2: CGPoint(x: minX - ext * 0.35, y: minY)
+            )
+        }
+        p.closeSubpath()
+        return p
+    }
+}
+
 /// Terminal icon + name badge (display only, not a button)
 private struct TerminalBadge: View {
     let session: SessionSnapshot
@@ -5304,17 +5688,23 @@ struct PixelText: View {
         "G": [0,1,1,1,0, 1,0,0,0,0, 1,0,0,1,1, 1,0,0,0,1, 0,1,1,1,0, 0,0,0,0,0, 0,0,0,0,0],
         "H": [1,0,0,0,1, 1,0,0,0,1, 1,1,1,1,1, 1,0,0,0,1, 1,0,0,0,1, 0,0,0,0,0, 0,0,0,0,0],
         "I": [0,1,1,1,0, 0,0,1,0,0, 0,0,1,0,0, 0,0,1,0,0, 0,1,1,1,0, 0,0,0,0,0, 0,0,0,0,0],
+        "J": [0,0,0,0,1, 0,0,0,0,1, 0,0,0,0,1, 1,0,0,0,1, 0,1,1,1,0, 0,0,0,0,0, 0,0,0,0,0],
         "K": [1,0,0,1,0, 1,0,1,0,0, 1,1,0,0,0, 1,0,1,0,0, 1,0,0,1,0, 0,0,0,0,0, 0,0,0,0,0],
         "L": [1,0,0,0,0, 1,0,0,0,0, 1,0,0,0,0, 1,0,0,0,0, 1,1,1,1,1, 0,0,0,0,0, 0,0,0,0,0],
-        "N": [1,0,0,0,1, 1,1,0,0,1, 1,0,1,0,1, 1,0,0,1,1, 1,0,0,0,1, 0,0,0,0,0, 0,0,0,0,0],
+        "M": [1,0,0,0,1, 1,1,0,1,1, 1,0,1,0,1, 1,0,0,0,1, 1,0,0,0,1, 0,0,0,0,0, 0,0,0,0,0],
+        "N": [1,0,0,0,1, 1,1,0,1,1, 1,0,1,0,1, 1,0,0,1,1, 1,0,0,0,1, 0,0,0,0,0, 0,0,0,0,0],
         "O": [0,1,1,1,0, 1,0,0,0,1, 1,0,0,0,1, 1,0,0,0,1, 0,1,1,1,0, 0,0,0,0,0, 0,0,0,0,0],
         "P": [1,1,1,1,0, 1,0,0,0,1, 1,1,1,1,0, 1,0,0,0,0, 1,0,0,0,0, 0,0,0,0,0, 0,0,0,0,0],
+        "Q": [0,1,1,1,0, 1,0,0,0,1, 1,0,0,0,1, 1,0,0,1,0, 0,1,1,0,1, 0,0,0,0,0, 0,0,0,0,0],
         "R": [1,1,1,1,0, 1,0,0,0,1, 1,1,1,1,0, 1,0,0,1,0, 1,0,0,0,1, 0,0,0,0,0, 0,0,0,0,0],
         "S": [0,1,1,1,1, 1,0,0,0,0, 0,1,1,1,0, 0,0,0,0,1, 1,1,1,1,0, 0,0,0,0,0, 0,0,0,0,0],
         "T": [1,1,1,1,1, 0,0,1,0,0, 0,0,1,0,0, 0,0,1,0,0, 0,0,1,0,0, 0,0,0,0,0, 0,0,0,0,0],
         "U": [1,0,0,0,1, 1,0,0,0,1, 1,0,0,0,1, 1,0,0,0,1, 0,1,1,1,0, 0,0,0,0,0, 0,0,0,0,0],
+        "V": [1,0,0,0,1, 1,0,0,0,1, 1,0,0,0,1, 0,1,0,1,0, 0,0,1,0,0, 0,0,0,0,0, 0,0,0,0,0],
         "W": [1,0,0,0,1, 1,0,0,0,1, 1,0,1,0,1, 1,0,1,0,1, 0,1,0,1,0, 0,0,0,0,0, 0,0,0,0,0],
         "X": [1,0,0,0,1, 0,1,0,1,0, 0,0,1,0,0, 0,1,0,1,0, 1,0,0,0,1, 0,0,0,0,0, 0,0,0,0,0],
+        "Y": [1,0,0,0,1, 0,1,0,1,0, 0,0,1,0,0, 0,0,1,0,0, 0,0,1,0,0, 0,0,0,0,0, 0,0,0,0,0],
+        "Z": [1,1,1,1,1, 0,0,0,1,0, 0,0,1,0,0, 0,1,0,0,0, 1,1,1,1,1, 0,0,0,0,0, 0,0,0,0,0],
         "/": [0,0,0,0,1, 0,0,0,1,0, 0,0,1,0,0, 0,1,0,0,0, 1,0,0,0,0, 0,0,0,0,0, 0,0,0,0,0],
         "-": [0,0,0,0,0, 0,0,0,0,0, 1,1,1,1,1, 0,0,0,0,0, 0,0,0,0,0, 0,0,0,0,0, 0,0,0,0,0],
         " ": [0,0,0,0,0, 0,0,0,0,0, 0,0,0,0,0, 0,0,0,0,0, 0,0,0,0,0, 0,0,0,0,0, 0,0,0,0,0],

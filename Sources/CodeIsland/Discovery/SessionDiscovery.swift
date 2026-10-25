@@ -138,6 +138,7 @@ enum SessionDiscovery {
         }
         if ConfigInstaller.isEnabled(source: "codex") {
             discovered.append(contentsOf: CodexDiscovery.findActiveCodexSessions(candidatePids: candidatePids))
+            discovered.append(contentsOf: CodexDiscovery.findRecentCodexVSCodeSessions())
         }
         if ConfigInstaller.isEnabled(source: "gemini") {
             discovered.append(contentsOf: GeminiDiscovery.findActiveGeminiSessions(candidatePids: candidatePids))

@@ -13,6 +13,13 @@ enum IslandSurface: Equatable {
 
     var isExpanded: Bool { self != .collapsed }
 
+    var isCard: Bool {
+        switch self {
+        case .approvalCard, .questionCard, .completionCard: return true
+        case .collapsed, .sessionList: return false
+        }
+    }
+
     /// 当前 surface 关联的 session ID（如有）
     var sessionId: String? {
         switch self {
