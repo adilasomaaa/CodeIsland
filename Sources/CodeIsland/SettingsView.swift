@@ -1332,6 +1332,8 @@ private struct AppearancePage: View {
     @AppStorage(SettingsKey.collapsedWidthScale) private var collapsedWidthScale = SettingsDefaults.collapsedWidthScale
     @AppStorage(SettingsKey.notchHeightMode) private var notchHeightModeRaw = SettingsDefaults.notchHeightMode
     @AppStorage(SettingsKey.customNotchHeight) private var customNotchHeight = SettingsDefaults.customNotchHeight
+    @AppStorage(SettingsKey.panelPlacement) private var panelPlacementRaw = SettingsDefaults.panelPlacement
+    @AppStorage(SettingsKey.panelStyle) private var panelStyleRaw = SettingsDefaults.panelStyle
     @AppStorage(SettingsKey.notchAnimationSpeed) private var notchAnimationSpeed = SettingsDefaults.notchAnimationSpeed
 
     private var notchHeightMode: Binding<NotchHeightMode> {
@@ -1367,6 +1369,23 @@ private struct AppearancePage: View {
             }
 
             Section(l10n["panel"]) {
+                Picker(l10n["panel_position"], selection: $panelPlacementRaw) {
+                    Text(l10n["panel_position_left"]).tag(PanelPlacement.left.rawValue)
+                    Text(l10n["panel_position_center"]).tag(PanelPlacement.center.rawValue)
+                    Text(l10n["panel_position_right"]).tag(PanelPlacement.right.rawValue)
+                }
+                .onChange(of: panelPlacementRaw) { _, _ in
+                    SettingsManager.shared.panelHorizontalOffset = 0
+                }
+                VStack(alignment: .leading, spacing: 4) {
+                    Picker(l10n["panel_style"], selection: $panelStyleRaw) {
+                        Text(l10n["panel_style_attached"]).tag(PanelStyle.attached.rawValue)
+                        Text(l10n["panel_style_floating"]).tag(PanelStyle.floating.rawValue)
+                    }
+                    Text(l10n["panel_style_desc"])
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
                 VStack(alignment: .leading, spacing: 4) {
                     HStack {
                         Text(l10n["notch_animation_speed"])

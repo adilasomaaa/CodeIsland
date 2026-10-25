@@ -247,6 +247,9 @@ final class AppState {
             }
         }
     }
+    /// Keeps the panel visible while the Spotify now-playing card is available,
+    /// including when normal session visibility rules would hide an idle panel.
+    var spotifyIsPlaying = false
 
     /// The request the approval / question card on screen was opened for.
     /// While that very request still waits, re-evaluating the queue leaves

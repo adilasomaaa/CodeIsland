@@ -120,6 +120,26 @@ enum PanelHeightMetrics {
     }
 }
 
+enum PanelPositionMetrics {
+    static let edgeInset: CGFloat = 16
+    static let floatingTopGap: CGFloat = 12
+
+    static func baseX(panelWidth: CGFloat, screenFrame: NSRect, placement: PanelPlacement) -> CGFloat {
+        switch placement {
+        case .left: screenFrame.minX + edgeInset
+        case .center: screenFrame.midX - panelWidth / 2
+        case .right: screenFrame.maxX - panelWidth - edgeInset
+        }
+    }
+
+    static func originY(panelHeight: CGFloat, screenFrame: NSRect, visibleFrame: NSRect, style: PanelStyle) -> CGFloat {
+        switch style {
+        case .attached: screenFrame.maxY - panelHeight
+        case .floating: visibleFrame.maxY - floatingTopGap - panelHeight
+        }
+    }
+}
+
 @MainActor
 class PanelWindowController: NSObject, NSWindowDelegate {
     private enum ScreenHopMetrics {
@@ -166,7 +186,9 @@ class PanelWindowController: NSObject, NSWindowDelegate {
         // a redraw, which looked like "invisible after ~2s, reappears on hover" (#304).
         // The content is top-anchored and the session list scrolls internally, so the
         // window never needs to be taller than the visible screen.
-        let maxH = min(desiredH, screen.visibleFrame.height)
+        let floatingInset = SettingsManager.shared.panelStyle == .floating
+            ? PanelPositionMetrics.floatingTopGap * 2 : 0
+        let maxH = min(desiredH, screen.visibleFrame.height - floatingInset)
         let screenW = screen.frame.width
         let width = min(620, screenW - 40)
         return NSSize(width: width, height: maxH)
@@ -192,6 +214,8 @@ class PanelWindowController: NSObject, NSWindowDelegate {
     private var lastDisplayChoice = ""
     private var lastNotchHeightMode = SettingsDefaults.notchHeightMode
     private var lastCustomNotchHeight = SettingsDefaults.customNotchHeight
+    private var lastPanelPlacement = SettingsDefaults.panelPlacement
+    private var lastPanelStyle = SettingsDefaults.panelStyle
 
     init(appState: AppState) {
         self.appState = appState
@@ -216,6 +240,7 @@ class PanelWindowController: NSObject, NSWindowDelegate {
         withObservationTracking {
             _ = appState.sessions
             _ = appState.surface
+            _ = appState.spotifyIsPlaying
         } onChange: { [weak self] in
             Task { @MainActor in
                 guard let self else { return }
@@ -464,6 +489,8 @@ class PanelWindowController: NSObject, NSWindowDelegate {
         lastDisplayChoice = SettingsManager.shared.displayChoice
         lastNotchHeightMode = SettingsManager.shared.notchHeightMode.rawValue
         lastCustomNotchHeight = SettingsManager.shared.customNotchHeight
+        lastPanelPlacement = SettingsManager.shared.panelPlacement.rawValue
+        lastPanelStyle = SettingsManager.shared.panelStyle.rawValue
         let observer = NotificationCenter.default.addObserver(
             forName: UserDefaults.didChangeNotification,
             object: nil,
@@ -474,14 +501,20 @@ class PanelWindowController: NSObject, NSWindowDelegate {
                 let newChoice = SettingsManager.shared.displayChoice
                 let newHeightMode = SettingsManager.shared.notchHeightMode.rawValue
                 let newCustomHeight = SettingsManager.shared.customNotchHeight
+                let newPlacement = SettingsManager.shared.panelPlacement.rawValue
+                let newStyle = SettingsManager.shared.panelStyle.rawValue
                 if newChoice != self.lastDisplayChoice {
                     self.lastDisplayChoice = newChoice
                     self.refreshCurrentScreen(forceRebuild: true)
                     self.configureAutoScreenPolling()
                 } else if newHeightMode != self.lastNotchHeightMode
-                    || abs(newCustomHeight - self.lastCustomNotchHeight) > 0.001 {
+                    || abs(newCustomHeight - self.lastCustomNotchHeight) > 0.001
+                    || newPlacement != self.lastPanelPlacement
+                    || newStyle != self.lastPanelStyle {
                     self.lastNotchHeightMode = newHeightMode
                     self.lastCustomNotchHeight = newCustomHeight
+                    self.lastPanelPlacement = newPlacement
+                    self.lastPanelStyle = newStyle
                     self.refreshCurrentScreen(forceRebuild: true)
                 } else {
                     self.updateVisibility()
@@ -519,16 +552,19 @@ class PanelWindowController: NSObject, NSWindowDelegate {
     private func panelFrame(for screen: NSScreen) -> NSRect {
         let size = panelSize(for: screen)
         let screenFrame = screen.frame
-        let centeredX = centeredX(for: size, screen: screen)
+        let placement = SettingsManager.shared.panelPlacement
+        let style = SettingsManager.shared.panelStyle
+        let baseX = PanelPositionMetrics.baseX(panelWidth: size.width, screenFrame: screenFrame, placement: placement)
         let dragOffset = SettingsManager.shared.allowHorizontalDrag
             ? CGFloat(SettingsManager.shared.panelHorizontalOffset)
             : 0
-        var desiredX = centeredX + dragOffset
+        var desiredX = baseX + dragOffset
 
         // #219: on external screens the simulated notch can land on third-party
         // status items (Bartender & co.) — slide it into the nearest clear gap.
         // A user-dragged offset is an explicit choice and always wins.
-        if SettingsManager.shared.avoidMenuBarIcons,
+        if placement == .center, style == .attached,
+           SettingsManager.shared.avoidMenuBarIcons,
            dragOffset == 0,
            !ScreenDetector.screenHasNotch(screen) {
             let occupied = MenuBarIconAvoidance.occupiedMenuBarRanges(on: screen)
@@ -543,12 +579,21 @@ class PanelWindowController: NSObject, NSWindowDelegate {
         }
 
         let x = clampedX(desiredX, panelWidth: size.width, on: screen)
-        let y = screenFrame.maxY - size.height
+        let y = PanelPositionMetrics.originY(
+            panelHeight: size.height,
+            screenFrame: screenFrame,
+            visibleFrame: screen.visibleFrame,
+            style: style
+        )
         return NSRect(x: x, y: y, width: size.width, height: size.height)
     }
 
-    private func centeredX(for size: NSSize, screen: NSScreen) -> CGFloat {
-        screen.frame.midX - size.width / 2
+    private func baseX(for size: NSSize, screen: NSScreen) -> CGFloat {
+        PanelPositionMetrics.baseX(
+            panelWidth: size.width,
+            screenFrame: screen.frame,
+            placement: SettingsManager.shared.panelPlacement
+        )
     }
 
     private func clampedX(_ desiredX: CGFloat, panelWidth: CGFloat, on screen: NSScreen) -> CGFloat {
@@ -581,14 +626,19 @@ class PanelWindowController: NSObject, NSWindowDelegate {
                     let screen = self.chosenScreen()
                     let size = panel.frame.size
                     let newX = self.clampedX(startPanelX + deltaX, panelWidth: size.width, on: screen)
-                    let fixedY = screen.frame.maxY - size.height
+                    let fixedY = PanelPositionMetrics.originY(
+                        panelHeight: size.height,
+                        screenFrame: screen.frame,
+                        visibleFrame: screen.visibleFrame,
+                        style: SettingsManager.shared.panelStyle
+                    )
                     panel.setFrameOrigin(NSPoint(x: newX, y: fixedY))
                 }
             case .leftMouseUp:
                 if self.isDraggingPanel, let panel = self.panel {
                     let screen = self.chosenScreen()
                     let size = panel.frame.size
-                    let offset = panel.frame.origin.x - self.centeredX(for: size, screen: screen)
+                    let offset = panel.frame.origin.x - self.baseX(for: size, screen: screen)
                     SettingsManager.shared.panelHorizontalOffset = Double(offset)
                 }
                 self.dragStartMouseX = nil
@@ -636,13 +686,13 @@ class PanelWindowController: NSObject, NSWindowDelegate {
     private func updateVisibility() {
         guard let panel = panel else { return }
         let settings = SettingsManager.shared
-        if settings.hideInFullscreen && fullscreenLatch {
+        if settings.hideInFullscreen && fullscreenLatch && !appState.spotifyIsPlaying {
             panel.orderOut(nil)
             MascotAnimationGate.shared.setPanelVisible(false)
             return
         }
 
-        if settings.hideWhenNoSession && appState.activeSessionCount == 0 {
+        if settings.hideWhenNoSession && appState.activeSessionCount == 0 && !appState.spotifyIsPlaying {
             panel.orderOut(nil)
             MascotAnimationGate.shared.setPanelVisible(false)
             return
@@ -711,7 +761,13 @@ class PanelWindowController: NSObject, NSWindowDelegate {
         // top edge therefore means the system re-placed the panel — e.g. a display
         // reconfigure clamping it below the menu bar (#263) — so snap it back.
         guard !isDraggingPanel, !isAnimatingScreenHop, let panel = panel else { return }
-        let expectedY = chosenScreen().frame.maxY - panel.frame.height
+        let screen = chosenScreen()
+        let expectedY = PanelPositionMetrics.originY(
+            panelHeight: panel.frame.height,
+            screenFrame: screen.frame,
+            visibleFrame: screen.visibleFrame,
+            style: SettingsManager.shared.panelStyle
+        )
         guard abs(panel.frame.origin.y - expectedY) > 0.5 else { return }
         DispatchQueue.main.async { [weak self] in
             guard let self, !self.isDraggingPanel, !self.isAnimatingScreenHop else { return }

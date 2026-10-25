@@ -117,12 +117,16 @@ struct NotchPanelView: View {
     let notchW: CGFloat
     let screenWidth: CGFloat
 
+    @State private var spotifyMonitor = SpotifyNowPlayingMonitor()
+
     @AppStorage(SettingsKey.contentFontSize) private var contentFontSize = SettingsDefaults.contentFontSize
     @AppStorage(SettingsKey.showAgentDetails) private var showAgentDetails = SettingsDefaults.showAgentDetails
     @AppStorage(SettingsKey.smartSuppress) private var smartSuppress = SettingsDefaults.smartSuppress
     @AppStorage(SettingsKey.hideWhenNoSession) private var hideWhenNoSession = SettingsDefaults.hideWhenNoSession
     @AppStorage(SettingsKey.showToolStatus) private var showToolStatus = SettingsDefaults.showToolStatus
     @AppStorage(SettingsKey.collapsedWidthScale) private var collapsedWidthScale = SettingsDefaults.collapsedWidthScale
+    @AppStorage(SettingsKey.panelPlacement) private var panelPlacementRaw = SettingsDefaults.panelPlacement
+    @AppStorage(SettingsKey.panelStyle) private var panelStyleRaw = SettingsDefaults.panelStyle
     @AppStorage(SettingsKey.showClaudeQuota) private var showClaudeQuota = SettingsDefaults.showClaudeQuota
     @AppStorage(SettingsKey.claudeQuotaChip) private var claudeQuotaChip = SettingsDefaults.claudeQuotaChip
     @AppStorage(SettingsKey.hapticOnHover) private var hapticOnHover = SettingsDefaults.hapticOnHover
@@ -149,7 +153,18 @@ struct NotchPanelView: View {
     /// Measured width of the collapsed right wing (0 until first laid out).
     @State private var rightWingWidth: CGFloat = 0
 
-    private var isActive: Bool { !appState.sessions.isEmpty }
+    private var isSpotifyPlaying: Bool { spotifyMonitor.track != nil }
+    private var isActive: Bool { !appState.sessions.isEmpty || isSpotifyPlaying }
+    private var placement: PanelPlacement { PanelPlacement(rawValue: panelPlacementRaw) ?? .center }
+    private var isFloating: Bool { panelStyleRaw == PanelStyle.floating.rawValue }
+    private var usesPhysicalNotch: Bool { hasNotch && placement == .center && !isFloating }
+    private var panelAlignment: Alignment {
+        switch placement {
+        case .left: .topLeading
+        case .center: .top
+        case .right: .topTrailing
+        }
+    }
     /// First launch / no-session state should still render a visible marker so the app
     /// doesn't disappear completely behind the physical notch.
     private var showIdleIndicator: Bool {
@@ -157,7 +172,7 @@ struct NotchPanelView: View {
     }
     /// Whether the bar content should be visible (respects hideWhenNoSession)
     private var showBar: Bool {
-        isActive && !(hideWhenNoSession && appState.activeSessionCount == 0)
+        isActive && !(hideWhenNoSession && appState.activeSessionCount == 0 && !isSpotifyPlaying)
     }
     private var shouldShowExpanded: Bool {
         showBar && appState.surface.isExpanded
@@ -188,7 +203,7 @@ struct NotchPanelView: View {
         NotchWidthMetrics.effectiveNotchWidth(
             notchW: notchW,
             collapsedWidthScale: collapsedWidthScale,
-            hasNotch: hasNotch
+            hasNotch: usesPhysicalNotch
         )
     }
 
@@ -196,7 +211,7 @@ struct NotchPanelView: View {
     private var panelWidth: CGFloat {
         let nw = effectiveNotchW
         if showIdleIndicator { return idleHovered ? nw + compactWingWidth * 2 + 80 : nw + compactWingWidth * 2 }
-        if !isActive { return hasNotch ? nw - 20 : nw }
+        if !isActive { return usesPhysicalNotch ? nw - 20 : nw }
         if shouldShowExpanded { return min(max(nw + 200, 580), maxPanelWidth) }
         return collapsedBarWidth + quotaReserve.extraWidth + rightWingReserve
     }
@@ -208,7 +223,7 @@ struct NotchPanelView: View {
             contentWidth: rightWingWidth,
             wing: compactWingWidth,
             statusExtra: collapsedStatusExtra,
-            hasNotch: hasNotch
+            hasNotch: usesPhysicalNotch
         )
     }
 
@@ -226,7 +241,7 @@ struct NotchPanelView: View {
     private var collapsedStatusExtra: CGFloat {
         let extra: CGFloat = appState.status == .idle ? 0 : 20
         // Reserve space for tool status — proportional to screen width
-        let toolExtra: CGFloat = displayedToolStatus ? (hasNotch ? screenWidth * 0.03 : screenWidth * 0.04) : 0
+        let toolExtra: CGFloat = displayedToolStatus ? (usesPhysicalNotch ? screenWidth * 0.03 : screenWidth * 0.04) : 0
         return extra + toolExtra
     }
 
@@ -243,7 +258,7 @@ struct NotchPanelView: View {
             mascotSize: mascotSize,
             wing: compactWingWidth,
             statusExtra: collapsedStatusExtra,
-            hasNotch: hasNotch,
+            hasNotch: usesPhysicalNotch,
             spareWidth: maxPanelWidth - collapsedBarWidth
         )
     }
@@ -254,8 +269,8 @@ struct NotchPanelView: View {
                 if showBar {
                     // Active: compact bar — wider version when expanded
                     HStack(spacing: 0) {
-                        CompactLeftWing(appState: appState, expanded: shouldShowExpanded, mascotSize: mascotSize, hasNotch: hasNotch, showToolStatus: showToolStatus)
-                        if hasNotch && !shouldShowExpanded {
+                        CompactLeftWing(appState: appState, expanded: shouldShowExpanded, mascotSize: mascotSize, hasNotch: usesPhysicalNotch, showToolStatus: showToolStatus)
+                        if usesPhysicalNotch && !shouldShowExpanded {
                             Spacer(minLength: effectiveNotchW)
                         } else if !shouldShowExpanded && showToolStatus {
                             CompactToolStatus(appState: appState)
@@ -263,7 +278,7 @@ struct NotchPanelView: View {
                         } else {
                             Spacer(minLength: 0)
                         }
-                        CompactRightWing(appState: appState, expanded: shouldShowExpanded, hasNotch: hasNotch)
+                        CompactRightWing(appState: appState, expanded: shouldShowExpanded, hasNotch: usesPhysicalNotch)
                     }
                     .frame(height: notchHeight)
                     // Recap on hover while collapsed — shows whenever hover
@@ -295,7 +310,7 @@ struct NotchPanelView: View {
                         compactWingWidth: compactWingWidth,
                         notchW: effectiveNotchW,
                         notchHeight: notchHeight,
-                        hasNotch: hasNotch,
+                        hasNotch: usesPhysicalNotch,
                         hovered: idleHovered
                     )
                 } else {
@@ -310,6 +325,14 @@ struct NotchPanelView: View {
                         .stroke(.white.opacity(0.15), style: StrokeStyle(lineWidth: 0.5, dash: [4, 3]))
                         .frame(height: 0.5)
                         .padding(.horizontal, 12)
+
+                    if isSpotifyPlaying {
+                        SpotifyLyricsPanel(monitor: spotifyMonitor)
+                            .padding(.horizontal, 16)
+                            .padding(.top, 12)
+                            .padding(.bottom, 4)
+                            .transition(.blurFade.combined(with: .move(edge: .top)))
+                    }
 
                     switch appState.surface {
                     case .approvalCard(let sid):
@@ -396,14 +419,20 @@ struct NotchPanelView: View {
             .recordsCompletionCardChrome(in: cardSpace)
             .frame(width: panelWidth)
             .clipped()
-            .background(
-                NotchPanelShape(
-                    topExtension: shouldShowExpanded ? 14 : 3,
-                    bottomRadius: shouldShowExpanded ? 24 : 12,
-                    minHeight: notchHeight
-                )
-                .fill(.black)
-            )
+            .background {
+                if isFloating {
+                    RoundedRectangle(cornerRadius: shouldShowExpanded ? 20 : 14, style: .continuous)
+                        .fill(.black)
+                        .shadow(color: .black.opacity(0.28), radius: 16, x: 0, y: 6)
+                } else {
+                    NotchPanelShape(
+                        topExtension: shouldShowExpanded ? 14 : 3,
+                        bottomRadius: shouldShowExpanded ? 24 : 12,
+                        minHeight: notchHeight
+                    )
+                    .fill(.black)
+                }
+            }
             .offset(y: curtainOffset)
             .opacity(curtainOpacity)
             .onChange(of: showToolStatus) { _, newValue in
@@ -558,7 +587,7 @@ struct NotchPanelView: View {
         // runs taller (without it the frame grows with its content), so the
         // measurement below is the window, and any overflow runs off the
         // bottom instead of pushing the notch bar off the top.
-        .frame(maxWidth: .infinity, minHeight: 0, maxHeight: .infinity, alignment: .top)
+        .frame(maxWidth: .infinity, minHeight: 0, maxHeight: .infinity, alignment: panelAlignment)
         // The hosting view fills the panel window, whose height is already
         // clamped to the screen.
         .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { cardSpace.recordWindowHeight($0) }
@@ -566,8 +595,12 @@ struct NotchPanelView: View {
         // The expanded header's grouping tabs: the physical notch, not the
         // widened island, is what they must stay clear of.
         .environment(\.sessionGroupingTabsRoom, SessionGroupingTabsLayout.room(
-            panelWidth: panelWidth, notchWidth: notchW, hasNotch: hasNotch
+            panelWidth: panelWidth, notchWidth: notchW, hasNotch: usesPhysicalNotch
         ))
+        .onChange(of: spotifyMonitor.track?.identity) { _, identity in
+            appState.spotifyIsPlaying = identity != nil
+        }
+        .task { await spotifyMonitor.pollContinuously() }
         .animation(NotchAnimation.open, value: appState.surface)
     }
 }

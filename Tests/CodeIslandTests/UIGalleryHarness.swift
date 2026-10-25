@@ -53,6 +53,7 @@ final class UIGalleryHarness: XCTestCase {
         for lang in langs {
             L10n.shared.language = lang.rawValue
             if wants("collapsed") { try await renderCollapsed(lang) }
+            if wants("placement") && lang == .en { try await renderPlacements(lang) }
             if wants("list") { try await renderList(lang) }
             if wants("approval") { try await renderApprovals(lang) }
             if wants("question") { try await renderQuestions(lang) }
@@ -85,6 +86,60 @@ final class UIGalleryHarness: XCTestCase {
             try renderOnStage(demo, group: "collapsed", name: name, lang: lang, screen: screen,
                               layout: StageLayout(width: screen.hasNotch ? 760 : 820, bottomMargin: 18, menuItems: true),
                               wallpaper: wallpaper, windowHeight: 120)
+        }
+    }
+
+    private func renderPlacements(_ lang: GalleryLang) async throws {
+        let screen = StageScreen(name: "air-m1", screenWidth: 1440, notchWidth: 202, notchHeight: 25, hasNotch: false)
+        let jobs = PanelPlacement.allCases.flatMap { placement in
+            PanelStyle.allCases.map { style in (placement, style, false) }
+        } + [(PanelPlacement.left, PanelStyle.floating, true), (.right, .floating, true)]
+        for (placement, style, expanded) in jobs {
+            GallerySettings.reset()
+            GallerySettings.set(placement.rawValue, SettingsKey.panelPlacement)
+            GallerySettings.set(style.rawValue, SettingsKey.panelStyle)
+            let demo: GalleryDemoState
+            if expanded {
+                demo = try await GalleryDemo.list(count: 4, lang: lang, quota: false)
+            } else {
+                demo = try await GalleryDemo.collapsed(.workingShort, lang: lang)
+            }
+            defer { demo.release() }
+            let height: CGFloat = expanded ? 510 : 120
+            let stageHeight: CGFloat = expanded ? 590 : 180
+            let panel = try OffscreenRender.hosted(
+                NotchPanelView(
+                    appState: demo.state,
+                    hasNotch: false,
+                    notchHeight: screen.notchHeight,
+                    notchW: screen.notchWidth,
+                    screenWidth: screen.screenWidth
+                )
+                .environment(\.mascotStaticTime, GalleryDemo.mascotTime)
+                .defaultAppStorage(GallerySettings.suite)
+                .frame(width: screen.windowWidth, height: height),
+                size: CGSize(width: screen.windowWidth, height: height),
+                afterFirstLayout: demo.afterFirstLayout
+            )
+            let topGap = style == .floating ? screen.notchHeight + PanelPositionMetrics.floatingTopGap : 0
+            let image = try XCTUnwrap(OffscreenRender.rasterize(
+                ZStack(alignment: .topLeading) {
+                    Wallpaper(size: CGSize(width: screen.screenWidth, height: stageHeight))
+                    MenuBarStrip(clock: lang.clock, showItems: true, height: screen.notchHeight)
+                    Image(decorative: panel, scale: 2)
+                        .offset(
+                            x: PanelPositionMetrics.baseX(
+                                panelWidth: screen.windowWidth,
+                                screenFrame: NSRect(x: 0, y: 0, width: screen.screenWidth, height: 900),
+                                placement: placement
+                            ),
+                            y: topGap
+                        )
+                }
+                .frame(width: screen.screenWidth, height: stageHeight)
+            ))
+            let name = "\(placement.rawValue)-\(style.rawValue)" + (expanded ? "-expanded" : "")
+            try write(image, group: "placement", name: name, lang: lang, note: nil)
         }
     }
 

@@ -3,6 +3,19 @@ import XCTest
 @testable import CodeIsland
 
 final class PanelWindowControllerTests: XCTestCase {
+    func testPanelPlacementAndFloatingGap() {
+        let screen = NSRect(x: 1440, y: 0, width: 1440, height: 900)
+        let visible = NSRect(x: 1440, y: 0, width: 1440, height: 863)
+        let width: CGFloat = 620
+        let height: CGFloat = 510
+
+        XCTAssertEqual(PanelPositionMetrics.baseX(panelWidth: width, screenFrame: screen, placement: .left), 1456)
+        XCTAssertEqual(PanelPositionMetrics.baseX(panelWidth: width, screenFrame: screen, placement: .center), 1850)
+        XCTAssertEqual(PanelPositionMetrics.baseX(panelWidth: width, screenFrame: screen, placement: .right), 2244)
+        XCTAssertEqual(PanelPositionMetrics.originY(panelHeight: height, screenFrame: screen, visibleFrame: visible, style: .attached), 390)
+        XCTAssertEqual(PanelPositionMetrics.originY(panelHeight: height, screenFrame: screen, visibleFrame: visible, style: .floating), 341)
+    }
+
     func testScreenHopMotionUsesMoreVisibleTiming() {
         let motion = PanelWindowController.screenHopMotion()
 

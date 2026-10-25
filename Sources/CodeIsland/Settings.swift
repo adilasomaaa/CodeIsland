@@ -17,6 +17,14 @@ enum NotchHeightMode: String, CaseIterable {
     case custom = "custom"
 }
 
+enum PanelPlacement: String, CaseIterable {
+    case left, center, right
+}
+
+enum PanelStyle: String, CaseIterable {
+    case attached, floating
+}
+
 enum SettingsKey {
     // Language
     static let appLanguage = "appLanguage"                 // "system", "en", "zh", "zh-Hant", "de", "ja", "ko", "tr"
@@ -56,6 +64,8 @@ enum SettingsKey {
     static let showAgentDetails = "showAgentDetails"
     static let notchHeightMode = "notchHeightMode"
     static let customNotchHeight = "customNotchHeight"
+    static let panelPlacement = "panelPlacement"
+    static let panelStyle = "panelStyle"
 
     // Sound
     static let soundEnabled = "soundEnabled"
@@ -196,6 +206,8 @@ struct SettingsDefaults {
     static let showAgentDetails = false
     static let notchHeightMode = NotchHeightMode.matchNotch.rawValue
     static let customNotchHeight = 37.0
+    static let panelPlacement = PanelPlacement.center.rawValue
+    static let panelStyle = PanelStyle.attached.rawValue
 
     static let soundEnabled = false
     static let soundVolume = 50
@@ -301,6 +313,8 @@ class SettingsManager {
             SettingsKey.showAgentDetails: SettingsDefaults.showAgentDetails,
             SettingsKey.notchHeightMode: SettingsDefaults.notchHeightMode,
             SettingsKey.customNotchHeight: SettingsDefaults.customNotchHeight,
+            SettingsKey.panelPlacement: SettingsDefaults.panelPlacement,
+            SettingsKey.panelStyle: SettingsDefaults.panelStyle,
             SettingsKey.soundEnabled: SettingsDefaults.soundEnabled,
             SettingsKey.soundVolume: SettingsDefaults.soundVolume,
             SettingsKey.soundSessionStart: SettingsDefaults.soundSessionStart,
@@ -455,6 +469,16 @@ class SettingsManager {
     var customNotchHeight: Double {
         get { defaults.double(forKey: SettingsKey.customNotchHeight) }
         set { defaults.set(newValue, forKey: SettingsKey.customNotchHeight) }
+    }
+
+    var panelPlacement: PanelPlacement {
+        get { PanelPlacement(rawValue: defaults.string(forKey: SettingsKey.panelPlacement) ?? "") ?? .center }
+        set { defaults.set(newValue.rawValue, forKey: SettingsKey.panelPlacement) }
+    }
+
+    var panelStyle: PanelStyle {
+        get { PanelStyle(rawValue: defaults.string(forKey: SettingsKey.panelStyle) ?? "") ?? .attached }
+        set { defaults.set(newValue.rawValue, forKey: SettingsKey.panelStyle) }
     }
 
     var maxToolHistory: Int {
