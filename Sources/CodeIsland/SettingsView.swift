@@ -658,6 +658,10 @@ private struct BehaviorPage: View {
 
             PushNotificationsSection()
 
+            if let state = appState ?? SettingsWindowController.shared.appState {
+                WhatsAppNotificationsSection(appState: state)
+            }
+
             Section(l10n["sessions"]) {
                 Picker(selection: $sessionTimeout) {
                     Text(l10n["no_cleanup"]).tag(0)

@@ -128,6 +128,11 @@ enum SettingsKey {
     // Tool status display
     static let showToolStatus = "showToolStatus"              // true = detailed, false = simple
 
+    // WhatsApp Notifications
+    static let notificationsEnabled = "notificationsEnabled"
+    static let notificationShowBody = "notificationShowBody"
+    static let notificationAutoClearOnRead = "notificationAutoClearOnRead"
+
     // Island collapsed width scale (percentage: 50–150, default 100)
     static let collapsedWidthScale = "collapsedWidthScale"
 
@@ -239,6 +244,10 @@ struct SettingsDefaults {
     static let sessionGroupingMode = "all"
 
     static let showToolStatus = true
+
+    static let notificationsEnabled = true
+    static let notificationShowBody = true
+    static let notificationAutoClearOnRead = true
 
     static let collapsedWidthScale = 100  // percentage
 

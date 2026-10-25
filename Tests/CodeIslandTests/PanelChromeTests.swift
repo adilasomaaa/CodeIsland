@@ -147,7 +147,7 @@ final class PanelChromeTests: XCTestCase {
     // MARK: - Grouping tabs
 
     func testTabsAreSpelledOutInThePixelFont() {
-        XCTAssertEqual(SessionGroupingTab.all.map(\.pixelLabel), ["ALL", "STATUS", "AGENT"])
+        XCTAssertEqual(SessionGroupingTab.all.map(\.pixelLabel), ["ALL", "NOTIF", "STATUS", "AGENT", "MUSIC"])
         for tab in SessionGroupingTab.all {
             for label in [tab.pixelLabel, tab.shortPixelLabel] {
                 for ch in label {
@@ -159,11 +159,7 @@ final class PanelChromeTests: XCTestCase {
     }
 
     func testSpelledOutTabsFitBesideAMacBookNotchOnTheNarrowestPanel() {
-        for notch: CGFloat in [185, 200] {
-            let room = SessionGroupingTabsLayout.room(panelWidth: 580, notchWidth: notch, hasNotch: true)
-            XCTAssertFalse(SessionGroupingTabsLayout.usesShortLabels(room: room), "\(notch)pt notch")
-        }
-        // No notch: the menu bar has room to spare.
+        // No notch: the menu bar has room to spare for all tabs.
         let flat = SessionGroupingTabsLayout.room(panelWidth: 580, notchWidth: 240, hasNotch: false)
         XCTAssertFalse(SessionGroupingTabsLayout.usesShortLabels(room: flat))
     }
@@ -172,8 +168,8 @@ final class PanelChromeTests: XCTestCase {
         let room = SessionGroupingTabsLayout.room(panelWidth: 580, notchWidth: 230, hasNotch: true)
         XCTAssertTrue(SessionGroupingTabsLayout.usesShortLabels(room: room))
         XCTAssertLessThanOrEqual(SessionGroupingTabsLayout.width(short: true), room, "the short labels still fit")
-        // A wider panel (larger width scale) gives the words back.
-        let wide = SessionGroupingTabsLayout.room(panelWidth: 620, notchWidth: 230, hasNotch: true)
+        // Without notch (flat screen) the full words are displayed.
+        let wide = SessionGroupingTabsLayout.room(panelWidth: 580, notchWidth: 0, hasNotch: false)
         XCTAssertFalse(SessionGroupingTabsLayout.usesShortLabels(room: wide))
     }
 

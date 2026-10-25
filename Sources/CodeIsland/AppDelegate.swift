@@ -116,6 +116,11 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             appState.startAiWorkWatcher()
             appState.startCoworkWatcher()
             RemoteManager.shared.startup()
+
+            let notificationsEnabled = UserDefaults.standard.object(forKey: SettingsKey.notificationsEnabled) as? Bool ?? SettingsDefaults.notificationsEnabled
+            if notificationsEnabled {
+                appState.notifications.startWatching()
+            }
         }
 
         // Buddy bridge (opt-in): mirrors the Dynamic Island onto the companion

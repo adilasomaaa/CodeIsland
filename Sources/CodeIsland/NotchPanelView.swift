@@ -112,12 +112,14 @@ enum ToolNameDisplay {
 
 private enum ExpandedPanelTab {
     case all
+    case notifications
     case status
     case agents
     case spotify
 
     static func groupingMode(_ value: String) -> Self {
         switch value {
+        case "notifications": .notifications
         case "status": .status
         case "cli": .agents
         default: .all
@@ -127,6 +129,7 @@ private enum ExpandedPanelTab {
     var groupingModeValue: String? {
         switch self {
         case .all: "all"
+        case .notifications: nil
         case .status: "status"
         case .agents: "cli"
         case .spotify: nil
@@ -135,7 +138,8 @@ private enum ExpandedPanelTab {
 
     var nextAfterSwipe: Self? {
         switch self {
-        case .all: .status
+        case .all: .notifications
+        case .notifications: .status
         case .status: .agents
         case .agents: .spotify
         case .spotify: nil
@@ -145,7 +149,8 @@ private enum ExpandedPanelTab {
     var previousAfterSwipe: Self? {
         switch self {
         case .all: nil
-        case .status: .all
+        case .notifications: .all
+        case .status: .notifications
         case .agents: .status
         case .spotify: .agents
         }
@@ -182,6 +187,8 @@ struct NotchPanelView: View {
     @State private var spotifyMonitor = SpotifyNowPlayingMonitor()
     @State private var expandedPanelTab = ExpandedPanelTab.all
     @State private var panelSwipeMonitor = PanelSwipeMonitor()
+    @State private var twoFingerSwipeMonitor = TwoFingerSwipeMonitor()
+    @State private var swipeVisualOffset: CGFloat = 0
 
     @AppStorage(SettingsKey.contentFontSize) private var contentFontSize = SettingsDefaults.contentFontSize
     @AppStorage(SettingsKey.showAgentDetails) private var showAgentDetails = SettingsDefaults.showAgentDetails
@@ -219,6 +226,7 @@ struct NotchPanelView: View {
     @State private var rightWingWidth: CGFloat = 0
 
     private var isSpotifyPlaying: Bool { spotifyMonitor.track != nil && (spotifyMonitor.track?.isPlaying ?? false) }
+    private var isNotificationPeeking: Bool { appState.notifications.isPeeking && appState.notifications.currentPeekText != nil }
     private var hasAiPriority: Bool {
         appState.status != .idle ||
         appState.activeSessionCount > 0 ||
@@ -227,7 +235,7 @@ struct NotchPanelView: View {
         appState.followUps.hintActive ||
         appState.glanceCompletionActive
     }
-    private var isActive: Bool { !appState.sessions.isEmpty || isSpotifyPlaying }
+    private var isActive: Bool { !appState.sessions.isEmpty || isSpotifyPlaying || !appState.notifications.items.isEmpty || isNotificationPeeking }
     private var placement: PanelPlacement { PanelPlacement(rawValue: panelPlacementRaw) ?? .center }
     private var isFloating: Bool { panelStyleRaw == PanelStyle.floating.rawValue }
     private var usesPhysicalNotch: Bool { hasNotch && placement == .center && !isFloating }
@@ -245,7 +253,7 @@ struct NotchPanelView: View {
     }
     /// Whether the bar content should be visible (respects hideWhenNoSession)
     private var showBar: Bool {
-        isActive && !(hideWhenNoSession && appState.activeSessionCount == 0 && !isSpotifyPlaying)
+        isActive && !(hideWhenNoSession && appState.activeSessionCount == 0 && !isSpotifyPlaying && appState.notifications.items.isEmpty && !isNotificationPeeking)
     }
     private var shouldShowExpanded: Bool {
         showBar && appState.surface.isExpanded
@@ -261,6 +269,9 @@ struct NotchPanelView: View {
         if expandedPanelTab == .spotify {
             SpotifyNowPlayingView(monitor: spotifyMonitor)
                 .transition(.blurFade.combined(with: .move(edge: .top)))
+        } else if expandedPanelTab == .notifications {
+            NotificationListView(store: appState.notifications)
+                .transition(.blurFade.combined(with: .move(edge: .top)))
         } else {
             SessionListView(
                 appState: appState,
@@ -269,6 +280,11 @@ struct NotchPanelView: View {
                 onSelectSpotifyTab: {
                     withAnimation(.easeInOut(duration: 0.2)) {
                         expandedPanelTab = .spotify
+                    }
+                },
+                onSelectNotificationTab: {
+                    withAnimation(.easeInOut(duration: 0.2)) {
+                        expandedPanelTab = .notifications
                     }
                 }
             )
@@ -302,6 +318,9 @@ struct NotchPanelView: View {
     /// Total panel width — adapts based on state and screen geometry
     private var panelWidth: CGFloat {
         let nw = effectiveNotchW
+        if isNotificationPeeking && !shouldShowExpanded {
+            return min(max(nw + 240, 360), maxPanelWidth)
+        }
         if showIdleIndicator { return idleHovered ? nw + compactWingWidth * 2 + 80 : nw + compactWingWidth * 2 }
         if !isActive { return usesPhysicalNotch ? nw - 20 : nw }
         if shouldShowExpanded { return min(max(nw + 200, 580), maxPanelWidth) }
@@ -358,38 +377,53 @@ struct NotchPanelView: View {
 
     @ViewBuilder
     private var compactBarHStack: some View {
-        let musicActive = isSpotifyPlaying && !hasAiPriority
-        let showMusicInCenter = !shouldShowExpanded && !usesPhysicalNotch && showToolStatus && musicActive
-        let showMusicInRightWing = !shouldShowExpanded && (usesPhysicalNotch || !showToolStatus) && musicActive
-
-        HStack(spacing: 0) {
-            CompactLeftWing(
-                appState: appState,
-                expanded: shouldShowExpanded,
-                mascotSize: mascotSize,
-                hasNotch: usesPhysicalNotch,
-                showToolStatus: showToolStatus,
-                selectedPanelTab: $expandedPanelTab
-            )
-            if usesPhysicalNotch && !shouldShowExpanded {
-                Spacer(minLength: effectiveNotchW)
-            } else if !shouldShowExpanded && showToolStatus {
-                CompactToolStatus(
-                    appState: appState,
-                    spotifyTrack: showMusicInCenter ? spotifyMonitor.track : nil
-                )
-                Spacer(minLength: 0)
-            } else {
-                Spacer(minLength: 0)
+        if isNotificationPeeking && !shouldShowExpanded, let peekText = appState.notifications.currentPeekText {
+            HStack(spacing: 0) {
+                Spacer()
+                NotificationPeekView(text: peekText) {
+                    withAnimation(NotchAnimation.open) {
+                        expandedPanelTab = .notifications
+                        appState.surface = .sessionList
+                    }
+                }
+                Spacer()
             }
-            CompactRightWing(
-                appState: appState,
-                expanded: shouldShowExpanded,
-                hasNotch: usesPhysicalNotch,
-                spotifyTrack: showMusicInRightWing ? spotifyMonitor.track : nil
-            )
+            .frame(height: notchHeight)
+            .transition(.opacity.combined(with: .scale(scale: 0.95)))
+        } else {
+            let musicActive = isSpotifyPlaying && !hasAiPriority
+            let showMusicInCenter = !shouldShowExpanded && !usesPhysicalNotch && showToolStatus && musicActive
+            let showMusicInRightWing = !shouldShowExpanded && (usesPhysicalNotch || !showToolStatus) && musicActive
+
+            HStack(spacing: 0) {
+                CompactLeftWing(
+                    appState: appState,
+                    expanded: shouldShowExpanded,
+                    mascotSize: mascotSize,
+                    hasNotch: usesPhysicalNotch,
+                    showToolStatus: showToolStatus,
+                    selectedPanelTab: $expandedPanelTab
+                )
+                if usesPhysicalNotch && !shouldShowExpanded {
+                    Spacer(minLength: effectiveNotchW)
+                } else if !shouldShowExpanded && showToolStatus {
+                    CompactToolStatus(
+                        appState: appState,
+                        spotifyTrack: showMusicInCenter ? spotifyMonitor.track : nil
+                    )
+                    Spacer(minLength: 0)
+                } else {
+                    Spacer(minLength: 0)
+                }
+                CompactRightWing(
+                    appState: appState,
+                    expanded: shouldShowExpanded,
+                    hasNotch: usesPhysicalNotch,
+                    spotifyTrack: showMusicInRightWing ? spotifyMonitor.track : nil
+                )
+            }
+            .frame(height: notchHeight)
         }
-        .frame(height: notchHeight)
     }
 
     private var musicChinWidth: CGFloat {
@@ -550,6 +584,7 @@ struct NotchPanelView: View {
                             .transition(.blurFade.combined(with: .move(edge: .top)))
                     case .sessionList:
                         expandedSessionContent
+                            .offset(x: swipeVisualOffset)
                             .transition(.blurFade.combined(with: .move(edge: .top)))
                     case .collapsed:
                         EmptyView()
@@ -769,19 +804,23 @@ struct NotchPanelView: View {
             appState.spotifyIsPlaying = identity != nil
         }
         .onAppear {
-            if expandedPanelTab != .spotify {
+            if expandedPanelTab != .spotify && expandedPanelTab != .notifications {
                 expandedPanelTab = .groupingMode(sessionGroupingMode)
             }
             updatePanelSwipeMonitor()
         }
         .onChange(of: sessionGroupingMode) { _, newMode in
-            if expandedPanelTab != .spotify {
+            if expandedPanelTab != .spotify && expandedPanelTab != .notifications {
                 expandedPanelTab = .groupingMode(newMode)
             }
         }
         .onChange(of: shouldShowExpanded) { _, _ in updatePanelSwipeMonitor() }
         .onChange(of: appState.surface) { _, _ in updatePanelSwipeMonitor() }
-        .onDisappear { panelSwipeMonitor.stop() }
+        .onDisappear {
+            panelSwipeMonitor.stop()
+            twoFingerSwipeMonitor.stop()
+            swipeVisualOffset = 0
+        }
         .task { await spotifyMonitor.pollContinuously() }
         .animation(NotchAnimation.open, value: appState.surface)
     }
@@ -789,6 +828,8 @@ struct NotchPanelView: View {
     private func updatePanelSwipeMonitor() {
         guard shouldShowExpanded, appState.surface == .sessionList else {
             panelSwipeMonitor.stop()
+            twoFingerSwipeMonitor.stop()
+            swipeVisualOffset = 0
             return
         }
         let selectedTab = $expandedPanelTab
@@ -805,6 +846,30 @@ struct NotchPanelView: View {
                 }
             }
         }
+
+        twoFingerSwipeMonitor.start(
+            onTracking: { offset in
+                swipeVisualOffset = offset
+            },
+            onCommit: { direction in
+                withAnimation(NotchAnimation.open) {
+                    swipeVisualOffset = 0
+                    let destination = direction == .next
+                        ? selectedTab.wrappedValue.nextAfterSwipe
+                        : selectedTab.wrappedValue.previousAfterSwipe
+                    guard let destination else { return }
+                    selectedTab.wrappedValue = destination
+                    if let mode = destination.groupingModeValue {
+                        groupingMode.wrappedValue = mode
+                    }
+                }
+            },
+            onCancel: {
+                withAnimation(.spring(response: 0.25, dampingFraction: 0.8)) {
+                    swipeVisualOffset = 0
+                }
+            }
+        )
     }
 }
 
@@ -928,6 +993,7 @@ struct SessionGroupingTab {
 
     static let all = [
         SessionGroupingTab(tag: "all", pixelLabel: "ALL", shortPixelLabel: "ALL", nameKey: "group_all"),
+        SessionGroupingTab(tag: "notifications", pixelLabel: "NOTIF", shortPixelLabel: "NTF", nameKey: "notifications_tab"),
         SessionGroupingTab(tag: "status", pixelLabel: "STATUS", shortPixelLabel: "STA", nameKey: "group_status"),
         SessionGroupingTab(tag: "cli", pixelLabel: "AGENT", shortPixelLabel: "AGT", nameKey: "group_cli"),
         SessionGroupingTab(tag: "spotify", pixelLabel: "MUSIC", shortPixelLabel: "MUS", nameKey: "spotify_tab"),
@@ -942,8 +1008,10 @@ struct SessionGroupingTab {
 /// narrowest (580pt) panel — MacBook notches are ≈185pt. Past that they fall
 /// back to three-letter labels rather than run under the notch.
 enum SessionGroupingTabsLayout {
-    static let pixelSize: CGFloat = 1.3
-    static let horizontalPadding: CGFloat = 5
+    static let pixelSize: CGFloat = 1.2
+    static let shortPixelSize: CGFloat = 1.0
+    static let horizontalPadding: CGFloat = 4
+    static let shortHorizontalPadding: CGFloat = 3
     static let spacing: CGFloat = 1
     /// The drawn strip, and the taller hit target each tab gets around it.
     static let stripHeight: CGFloat = 17
@@ -964,8 +1032,10 @@ enum SessionGroupingTabsLayout {
     /// Width of the whole tab strip.
     static func width(short: Bool) -> CGFloat {
         let tabs = SessionGroupingTab.all
-        let labels = tabs.reduce(CGFloat(0)) { $0 + labelWidth(short ? $1.shortPixelLabel : $1.pixelLabel) }
-        return labels + CGFloat(tabs.count) * horizontalPadding * 2 + CGFloat(tabs.count - 1) * spacing
+        let pSize = short ? shortPixelSize : pixelSize
+        let pad = short ? shortHorizontalPadding : horizontalPadding
+        let labels = tabs.reduce(CGFloat(0)) { $0 + labelWidth(short ? $1.shortPixelLabel : $1.pixelLabel, pixelSize: pSize) }
+        return labels + CGFloat(tabs.count) * pad * 2 + CGFloat(tabs.count - 1) * spacing
     }
 
     /// Room the expanded header leaves the tabs. On a notched screen that is
@@ -1050,6 +1120,20 @@ private struct CompactRightWing: View {
                         .fill(Color(red: 0.4, green: 1.0, blue: 0.5))
                         .frame(width: 7, height: 7)
                         .shadow(color: Color(red: 0.4, green: 1.0, blue: 0.5).opacity(0.7), radius: 3)
+                }
+
+                // WhatsApp notifications unread badge
+                if appState.notifications.unreadCount > 0 {
+                    HStack(spacing: 2) {
+                        Image(systemName: "message.fill")
+                            .font(.system(size: 7.5, weight: .bold))
+                        if appState.notifications.unreadCount > 1 {
+                            Text("\(min(99, appState.notifications.unreadCount))")
+                                .font(.system(size: 8, weight: .bold, design: .rounded))
+                        }
+                    }
+                    .foregroundStyle(Color(red: 0.15, green: 0.78, blue: 0.35))
+                    .help("WhatsApp (\(appState.notifications.unreadCount))")
                 }
 
                 // A question the island is not showing (auto-expand off, or
@@ -1491,10 +1575,12 @@ private struct SessionGroupingTabs: View {
     var body: some View {
         let layout = SessionGroupingTabsLayout.self
         let short = layout.usesShortLabels(room: room)
+        let pixelSize = short ? layout.shortPixelSize : layout.pixelSize
+        let pad = short ? layout.shortHorizontalPadding : layout.horizontalPadding
         HStack(spacing: layout.spacing) {
             ForEach(SessionGroupingTab.all, id: \.tag) { tab in
                 let panelTab = ExpandedPanelTab.groupingMode(tab.tag)
-                let tabSelection: ExpandedPanelTab = tab.tag == "spotify" ? .spotify : panelTab
+                let tabSelection: ExpandedPanelTab = tab.tag == "spotify" ? .spotify : (tab.tag == "notifications" ? .notifications : panelTab)
                 let selected = selectedPanelTab == tabSelection
                 Button {
                     withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.15)) {
@@ -1506,9 +1592,9 @@ private struct SessionGroupingTabs: View {
                         text: short ? tab.shortPixelLabel : tab.pixelLabel,
                         color: selected ? Self.selectedColor
                             : (hoveredTag == tab.tag ? .white.opacity(0.9) : Self.inactiveColor),
-                        pixelSize: layout.pixelSize
+                        pixelSize: pixelSize
                     )
-                    .padding(.horizontal, layout.horizontalPadding)
+                    .padding(.horizontal, pad)
                     .frame(height: layout.stripHeight)
                     .background(Rectangle().fill(selected ? .white.opacity(0.1) : .clear))
                     // Taller than the strip it draws: a 24pt target.
@@ -3140,6 +3226,7 @@ private struct SessionListView: View {
     var onlySessionId: String? = nil
     var spotifyMonitor: SpotifyNowPlayingMonitor? = nil
     var onSelectSpotifyTab: (() -> Void)? = nil
+    var onSelectNotificationTab: (() -> Void)? = nil
     @AppStorage(SettingsKey.sessionGroupingMode) private var groupingMode = SettingsDefaults.sessionGroupingMode
     @AppStorage(SettingsKey.maxVisibleSessions) private var maxVisibleSessions = SettingsDefaults.maxVisibleSessions
     @AppStorage(SettingsKey.showUsageStats) private var showUsageStats = SettingsDefaults.showUsageStats
@@ -3275,6 +3362,12 @@ private struct SessionListView: View {
             )
             : (0, 0)
         let content = VStack(spacing: density == .compact ? CompactSessionRowMetrics.spacing : 6) {
+            if groupingMode == "all" && onlySessionId == nil && !appState.notifications.items.isEmpty {
+                NotificationStackCard(store: appState.notifications, onOpenFullTab: {
+                    onSelectNotificationTab?()
+                })
+            }
+
             if groupingMode == "all" && onlySessionId == nil,
                let spotify = spotifyMonitor,
                spotify.track != nil {

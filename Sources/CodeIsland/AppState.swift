@@ -251,6 +251,9 @@ final class AppState {
     /// including when normal session visibility rules would hide an idle panel.
     var spotifyIsPlaying = false
 
+    /// In-memory notification store for WhatsApp desktop notifications.
+    let notifications = NotificationStore()
+
     /// The request the approval / question card on screen was opened for.
     /// While that very request still waits, re-evaluating the queue leaves
     /// the card alone — it may be one the user picked that is not the head.
