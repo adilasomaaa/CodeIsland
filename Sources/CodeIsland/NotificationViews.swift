@@ -30,6 +30,7 @@ public enum NotificationAvatarHelper {
 public struct NotificationPeekView: View {
     let text: String
     var onTap: (() -> Void)? = nil
+    @Environment(\.notchTheme) private var notchTheme
 
     public init(text: String, onTap: (() -> Void)? = nil) {
         self.text = text
@@ -63,7 +64,7 @@ public struct NotificationPeekView: View {
         .padding(.vertical, 3)
         .background(
             Capsule()
-                .fill(Color.black.opacity(0.75))
+                .fill(notchTheme.elevatedFill)
                 .overlay(
                     Capsule()
                         .strokeBorder(Color(red: 0.15, green: 0.78, blue: 0.35).opacity(0.4), lineWidth: 0.8)

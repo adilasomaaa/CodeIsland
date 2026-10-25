@@ -206,6 +206,19 @@ struct NotchPanelView: View {
     @AppStorage(SettingsKey.showSessionRecap) private var showSessionRecap = SettingsDefaults.showSessionRecap
     @AppStorage(SettingsKey.hoverExpandDelay) private var hoverExpandDelay = SettingsDefaults.hoverExpandDelay
     @AppStorage(SettingsKey.showProjectName) private var showProjectName = SettingsDefaults.showProjectName
+    @AppStorage(SettingsKey.notchTheme) private var notchThemeRaw = SettingsDefaults.notchTheme
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.colorSchemeContrast) private var colorSchemeContrast
+
+    private var activeTheme: NotchTheme {
+        let base = NotchTheme.preset(for: NotchThemeID.resolve(notchThemeRaw))
+        return base.adjusted(
+            reduceTransparency: reduceTransparency,
+            increaseContrast: colorSchemeContrast == .increased,
+            reduceMotion: reduceMotion
+        )
+    }
 
     /// Delayed hover: prevents accidental expansion when mouse passes through
     @State private var hoverTimer: Timer?
@@ -503,10 +516,21 @@ struct NotchPanelView: View {
 
                 // Below-notch expanded content
                 if shouldShowExpanded {
-                    Line()
-                        .stroke(.white.opacity(0.15), style: StrokeStyle(lineWidth: 0.5, dash: [4, 3]))
-                        .frame(height: 0.5)
-                        .padding(.horizontal, 12)
+                    Group {
+                        switch activeTheme.divider {
+                        case .dashed(let opacity):
+                            Line()
+                                .stroke(.white.opacity(opacity), style: StrokeStyle(lineWidth: 0.5, dash: [4, 3]))
+                                .frame(height: 0.5)
+                        case .solid(let color, let width):
+                            Rectangle()
+                                .fill(color)
+                                .frame(height: width)
+                        case .none:
+                            EmptyView()
+                        }
+                    }
+                    .padding(.horizontal, 12)
 
                     switch appState.surface {
                     case .approvalCard(let sid):
@@ -595,44 +619,63 @@ struct NotchPanelView: View {
             .frame(width: panelWidth)
             .clipped()
             .background {
+                let context = NotchSurfaceContext(
+                    isExpanded: shouldShowExpanded,
+                    isFloating: isFloating,
+                    usesPhysicalNotch: usesPhysicalNotch,
+                    notchHeight: notchHeight
+                )
+
                 if shouldShowExpanded {
                     if isFloating {
-                        RoundedRectangle(cornerRadius: 20, style: .continuous)
-                            .fill(.black)
-                            .shadow(color: .black.opacity(0.28), radius: 16, x: 0, y: 6)
-                    } else {
-                        NotchPanelShape(
-                            topExtension: 14,
-                            bottomRadius: 24,
-                            minHeight: notchHeight
+                        NotchSurfaceBackground(
+                            shape: RoundedRectangle(cornerRadius: 20 * activeTheme.cornerScale, style: .continuous),
+                            theme: activeTheme,
+                            context: context
                         )
-                        .fill(.black)
+                    } else {
+                        NotchSurfaceBackground(
+                            shape: NotchPanelShape(
+                                topExtension: 14,
+                                bottomRadius: 24 * activeTheme.cornerScale,
+                                minHeight: notchHeight
+                            ),
+                            theme: activeTheme,
+                            context: context
+                        )
                     }
                 } else if hasMusicChin {
-                    IslandChinShape(
-                        barHeight: notchHeight,
-                        chinWidth: musicChinWidth,
-                        chinHeight: musicChinHeight,
-                        isFloating: isFloating,
-                        topExtension: 3,
-                        barCornerRadius: 14,
-                        chinCornerRadius: 11,
-                        filletRadius: 10
+                    NotchSurfaceBackground(
+                        shape: IslandChinShape(
+                            barHeight: notchHeight,
+                            chinWidth: musicChinWidth,
+                            chinHeight: musicChinHeight,
+                            isFloating: isFloating,
+                            topExtension: 3,
+                            barCornerRadius: 14 * activeTheme.cornerScale,
+                            chinCornerRadius: 11 * activeTheme.cornerScale,
+                            filletRadius: 10
+                        ),
+                        theme: activeTheme,
+                        context: context
                     )
-                    .fill(.black)
-                    .shadow(color: isFloating ? .black.opacity(0.28) : .clear, radius: 16, x: 0, y: 6)
                 } else {
                     if isFloating {
-                        RoundedRectangle(cornerRadius: 14, style: .continuous)
-                            .fill(.black)
-                            .shadow(color: .black.opacity(0.28), radius: 16, x: 0, y: 6)
-                    } else {
-                        NotchPanelShape(
-                            topExtension: 3,
-                            bottomRadius: 12,
-                            minHeight: notchHeight
+                        NotchSurfaceBackground(
+                            shape: RoundedRectangle(cornerRadius: 14 * activeTheme.cornerScale, style: .continuous),
+                            theme: activeTheme,
+                            context: context
                         )
-                        .fill(.black)
+                    } else {
+                        NotchSurfaceBackground(
+                            shape: NotchPanelShape(
+                                topExtension: 3,
+                                bottomRadius: 12 * activeTheme.cornerScale,
+                                minHeight: notchHeight
+                            ),
+                            theme: activeTheme,
+                            context: context
+                        )
                     }
                 }
             }
@@ -800,6 +843,7 @@ struct NotchPanelView: View {
         .environment(\.sessionGroupingTabsRoom, SessionGroupingTabsLayout.room(
             panelWidth: panelWidth, notchWidth: notchW, hasNotch: usesPhysicalNotch
         ))
+        .environment(\.notchTheme, activeTheme)
         .onChange(of: spotifyMonitor.track?.identity) { _, identity in
             appState.spotifyIsPlaying = identity != nil
         }
@@ -2148,11 +2192,14 @@ private struct NotchCardButton: View {
     var systemImage: String? = nil
     let action: () -> Void
     @State private var hovering = false
+    @Environment(\.notchTheme) private var notchTheme
+
+    private var palette: NotchCardPaletteValues { notchTheme.palette }
 
     private var foreground: Color {
         switch role {
         case .primary: return .white.opacity(isEnabled ? 1 : 0.6)
-        case .destructive: return NotchCardPalette.deny
+        case .destructive: return palette.deny
         case .secondary: return .white.opacity(0.85)
         case .quiet: return .white.opacity(hovering ? 0.85 : 0.6)
         }
@@ -2161,9 +2208,9 @@ private struct NotchCardButton: View {
     private var fill: Color {
         switch role {
         case .primary:
-            guard isEnabled else { return NotchCardPalette.allowFill.opacity(0.35) }
-            return hovering ? NotchCardPalette.allowFillHover : NotchCardPalette.allowFill
-        case .destructive: return NotchCardPalette.deny.opacity(hovering ? 0.14 : 0)
+            guard isEnabled else { return palette.allowFill.opacity(0.35) }
+            return hovering ? palette.allowFillHover : palette.allowFill
+        case .destructive: return palette.deny.opacity(hovering ? 0.14 : 0)
         case .secondary: return .white.opacity(hovering ? 0.10 : 0.03)
         case .quiet: return .white.opacity(hovering ? 0.07 : 0)
         }
@@ -2172,7 +2219,7 @@ private struct NotchCardButton: View {
     private var stroke: Color {
         switch role {
         case .primary: return .clear
-        case .destructive: return NotchCardPalette.deny.opacity(hovering ? 0.9 : 0.7)
+        case .destructive: return palette.deny.opacity(hovering ? 0.9 : 0.7)
         case .secondary: return .white.opacity(hovering ? 0.4 : 0.28)
         case .quiet: return .clear
         }
@@ -2719,6 +2766,7 @@ private struct QuestionBar: View {
     // Multi-question wizard state, bound to `requestId` (#333)
     @State private var wizard = QuestionWizardState()
     @FocusState private var otherFocused: Bool
+    @Environment(\.notchTheme) private var notchTheme
 
     private let cyan = Color(red: 0.4, green: 0.7, blue: 1.0)
     /// The options never shrink below about two rows.
@@ -2851,11 +2899,11 @@ private struct QuestionBar: View {
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 6)
-        .background(Color.white.opacity(0.05))
+        .background(notchTheme.card.fill)
         .cornerRadius(4)
         .overlay(
             RoundedRectangle(cornerRadius: 4)
-                .strokeBorder(Color.white.opacity(0.1), lineWidth: 1)
+                .strokeBorder(notchTheme.card.borderColor ?? Color.white.opacity(0.1), lineWidth: 1)
         )
     }
 
@@ -4514,6 +4562,7 @@ private struct SessionCard: View {
     @AppStorage(SettingsKey.showSessionRecap) private var showSessionRecap = SettingsDefaults.showSessionRecap
     @AppStorage(SettingsKey.showModelLabel) private var showModelLabel = SettingsDefaults.showModelLabel
     @AppStorage(SettingsKey.showProjectName) private var showProjectName = SettingsDefaults.showProjectName
+    @Environment(\.notchTheme) private var notchTheme
     private var fontSize: CGFloat { CGFloat(contentFontSize) }
     private var aiLineLimit: Int? { aiMessageLines > 0 ? aiMessageLines : nil }
     private var approvalQueueIndex: Int? {
@@ -5040,16 +5089,28 @@ private struct SessionCard: View {
     /// Card fill with the status rail down its leading edge.
     private func cardBackground(cornerRadius: CGFloat, tint: Color? = nil) -> some View {
         let shape = RoundedRectangle(cornerRadius: cornerRadius)
+        let cardStyle = notchTheme.card
+        let fill = hovering ? cardStyle.hoverFill : cardStyle.fill
+
         return ZStack(alignment: .leading) {
-            shape.fill(hovering ? Color.white.opacity(0.10) : Color.white.opacity(0.05))
+            shape.fill(fill)
             if let tint {
                 shape.fill(tint)
+            }
+            if let border = cardStyle.borderColor, cardStyle.borderWidth > 0 {
+                shape.stroke(border, lineWidth: cardStyle.borderWidth)
             }
             Rectangle()
                 .fill(cardStatus.railColor)
                 .frame(width: 3)
         }
         .clipShape(shape)
+        .shadow(
+            color: cardStyle.shadowColor ?? .clear,
+            radius: cardStyle.shadowRadius,
+            x: 0,
+            y: cardStyle.shadowY
+        )
         .accessibilityHidden(true)
     }
 

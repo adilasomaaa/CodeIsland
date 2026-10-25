@@ -67,6 +67,7 @@ enum SettingsKey {
     static let customNotchHeight = "customNotchHeight"
     static let panelPlacement = "panelPlacement"
     static let panelStyle = "panelStyle"
+    static let notchTheme = "notchTheme"
 
     // Sound
     static let soundEnabled = "soundEnabled"
@@ -215,6 +216,7 @@ struct SettingsDefaults {
     static let customNotchHeight = 37.0
     static let panelPlacement = PanelPlacement.center.rawValue
     static let panelStyle = PanelStyle.attached.rawValue
+    static let notchTheme = NotchThemeID.classic.rawValue
 
     static let soundEnabled = false
     static let soundVolume = 50
@@ -327,6 +329,7 @@ class SettingsManager {
             SettingsKey.customNotchHeight: SettingsDefaults.customNotchHeight,
             SettingsKey.panelPlacement: SettingsDefaults.panelPlacement,
             SettingsKey.panelStyle: SettingsDefaults.panelStyle,
+            SettingsKey.notchTheme: SettingsDefaults.notchTheme,
             SettingsKey.soundEnabled: SettingsDefaults.soundEnabled,
             SettingsKey.soundVolume: SettingsDefaults.soundVolume,
             SettingsKey.soundSessionStart: SettingsDefaults.soundSessionStart,
@@ -496,6 +499,11 @@ class SettingsManager {
     var panelStyle: PanelStyle {
         get { PanelStyle(rawValue: defaults.string(forKey: SettingsKey.panelStyle) ?? "") ?? .attached }
         set { defaults.set(newValue.rawValue, forKey: SettingsKey.panelStyle) }
+    }
+
+    var notchTheme: NotchThemeID {
+        get { NotchThemeID.resolve(defaults.string(forKey: SettingsKey.notchTheme) ?? "") }
+        set { defaults.set(newValue.rawValue, forKey: SettingsKey.notchTheme) }
     }
 
     var maxToolHistory: Int {

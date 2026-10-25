@@ -1339,6 +1339,7 @@ private struct AppearancePage: View {
     @AppStorage(SettingsKey.customNotchHeight) private var customNotchHeight = SettingsDefaults.customNotchHeight
     @AppStorage(SettingsKey.panelPlacement) private var panelPlacementRaw = SettingsDefaults.panelPlacement
     @AppStorage(SettingsKey.panelStyle) private var panelStyleRaw = SettingsDefaults.panelStyle
+    @AppStorage(SettingsKey.notchTheme) private var notchThemeRaw = SettingsDefaults.notchTheme
     @AppStorage(SettingsKey.notchAnimationSpeed) private var notchAnimationSpeed = SettingsDefaults.notchAnimationSpeed
 
     private var notchHeightMode: Binding<NotchHeightMode> {
@@ -1364,6 +1365,14 @@ private struct AppearancePage: View {
 
     var body: some View {
         Form {
+            Section {
+                ThemePickerView(selectedThemeRaw: $notchThemeRaw)
+            } header: {
+                Text(l10n["notch_theme"])
+            } footer: {
+                Text(l10n["notch_theme_desc"])
+            }
+
             Section(l10n["preview"]) {
                 AppearancePreview(
                     fontSize: contentFontSize,
@@ -1550,9 +1559,11 @@ private struct AppearancePreview: View {
     let lineLimit: Int
     let showDetails: Bool
     var density: SessionListDensity = .comfortable
+    @AppStorage(SettingsKey.notchTheme) private var notchThemeRaw = SettingsDefaults.notchTheme
 
     private var fs: CGFloat { CGFloat(fontSize) }
     private let status = SessionCardStatus.working
+    private var theme: NotchTheme { NotchTheme.preset(for: NotchThemeID.resolve(notchThemeRaw)) }
     private static let sampleReply = """
         Found the issue in `auth.ts`:
         - token refresh was **skipping the expiry check**
@@ -1568,18 +1579,29 @@ private struct AppearancePreview: View {
         }
         .background(
             ZStack(alignment: .leading) {
-                RoundedRectangle(cornerRadius: 14, style: .continuous)
-                    .fill(Color(white: 0.05))
+                RoundedRectangle(cornerRadius: 14 * theme.cornerScale, style: .continuous)
+                    .fill(theme.card.fill)
+                if let border = theme.card.borderColor, theme.card.borderWidth > 0 {
+                    RoundedRectangle(cornerRadius: 14 * theme.cornerScale, style: .continuous)
+                        .strokeBorder(border, lineWidth: theme.card.borderWidth)
+                }
                 Rectangle()
                     .fill(status.railColor)
                     .frame(width: 3)
             }
-            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+            .clipShape(RoundedRectangle(cornerRadius: 14 * theme.cornerScale, style: .continuous))
+            .shadow(
+                color: theme.card.shadowColor ?? .clear,
+                radius: theme.card.shadowRadius,
+                x: 0,
+                y: theme.card.shadowY
+            )
         )
         .animation(.easeInOut(duration: 0.25), value: fontSize)
         .animation(.easeInOut(duration: 0.25), value: lineLimit)
         .animation(.easeInOut(duration: 0.25), value: showDetails)
         .animation(.easeInOut(duration: 0.25), value: density)
+        .animation(.easeInOut(duration: 0.25), value: notchThemeRaw)
     }
 
     /// The session card as the list draws it (Comfortable).
