@@ -224,6 +224,8 @@ final class AppState {
     }
     /// Preview-only: mock question payload for DebugHarness (no continuation needed)
     var previewQuestionPayload: QuestionPayload?
+    /// Active while the notch panel is being repositioned by user drag (long-press)
+    var isRepositioningActive: Bool = false
     var surface: IslandSurface = .collapsed {
         didSet {
             // Any expansion counts as "seen" for the glance completion dot.

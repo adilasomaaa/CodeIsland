@@ -822,6 +822,25 @@ struct NotchPanelView: View {
             swipeVisualOffset = 0
         }
         .task { await spotifyMonitor.pollContinuously() }
+        .overlay(alignment: .top) {
+            if appState.isRepositioningActive {
+                HStack(spacing: 6) {
+                    Image(systemName: "arrow.up.and.down.and.arrow.left.and.right")
+                        .font(.system(size: 13, weight: .bold))
+                        .foregroundStyle(.white)
+                }
+                .padding(.horizontal, 10)
+                .padding(.vertical, 5)
+                .background(
+                    Capsule()
+                        .fill(Color.accentColor.opacity(0.9))
+                        .shadow(color: .black.opacity(0.4), radius: 6, x: 0, y: 2)
+                )
+                .padding(.top, max(2, (notchHeight - 24) / 2))
+                .transition(.scale(scale: 0.8).combined(with: .opacity))
+            }
+        }
+        .animation(.spring(response: 0.25, dampingFraction: 0.7), value: appState.isRepositioningActive)
         .animation(NotchAnimation.open, value: appState.surface)
     }
 
@@ -836,7 +855,8 @@ struct NotchPanelView: View {
         let groupingMode = $sessionGroupingMode
         panelSwipeMonitor.start { deltaX in
             withAnimation(NotchAnimation.open) {
-                let destination = deltaX < 0
+                // In macOS NSEvent.swipe: deltaX > 0 is swipe left (next tab), deltaX < 0 is swipe right (previous tab)
+                let destination = deltaX > 0
                     ? selectedTab.wrappedValue.nextAfterSwipe
                     : selectedTab.wrappedValue.previousAfterSwipe
                 guard let destination else { return }
@@ -5598,8 +5618,8 @@ private struct IslandChinShape: Shape {
         // Bottom-left corner of left wing
         p.addCurve(
             to: CGPoint(x: minX, y: barBottomY - barCornerRadius),
-            control1: CGPoint(x: minX, y: barBottomY - barCornerRadius * 0.45),
-            control2: CGPoint(x: minX - barCornerRadius * 0.45, y: barBottomY)
+            control1: CGPoint(x: minX + barCornerRadius * 0.45, y: barBottomY),
+            control2: CGPoint(x: minX, y: barBottomY - barCornerRadius * 0.45)
         )
 
         if isFloating {

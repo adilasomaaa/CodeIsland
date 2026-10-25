@@ -108,29 +108,29 @@ public struct NotificationRow: View {
     }
 
     public var body: some View {
-        HStack(alignment: .top, spacing: 9) {
+        HStack(alignment: .top, spacing: 8) {
             // Sender Avatar
             ZStack {
                 Circle()
                     .fill(NotificationAvatarHelper.color(for: item.sender))
-                    .frame(width: 28, height: 28)
+                    .frame(width: 24, height: 24)
                 Text(NotificationAvatarHelper.initial(for: item.sender))
-                    .font(.system(size: 12, weight: .bold, design: .rounded))
+                    .font(.system(size: 10, weight: .bold, design: .monospaced))
                     .foregroundStyle(.white)
             }
             .padding(.top, 1)
 
             // Content
             VStack(alignment: .leading, spacing: 2) {
-                HStack(alignment: .firstTextBaseline, spacing: 6) {
+                HStack(alignment: .firstTextBaseline, spacing: 5) {
                     Text(item.sender)
-                        .font(.system(size: 12, weight: .semibold))
+                        .font(.system(size: 11, weight: .bold, design: .monospaced))
                         .foregroundStyle(.white)
                         .lineLimit(1)
 
                     if let sub = item.subtitle, !sub.isEmpty, sub != item.sender {
                         Text("(\(sub))")
-                            .font(.system(size: 10))
+                            .font(.system(size: 9.5, weight: .medium, design: .monospaced))
                             .foregroundStyle(.white.opacity(0.5))
                             .lineLimit(1)
                     }
@@ -138,16 +138,16 @@ public struct NotificationRow: View {
                     Spacer()
 
                     Text(formattedTime)
-                        .font(.system(size: 10, design: .monospaced))
+                        .font(.system(size: 8.5, weight: .medium, design: .monospaced))
                         .foregroundStyle(.white.opacity(0.4))
 
                     // Delete single button
                     if isHovered {
                         Button(action: onRemove) {
                             Image(systemName: "xmark")
-                                .font(.system(size: 9, weight: .bold))
-                                .foregroundStyle(.white.opacity(0.6))
-                                .padding(3)
+                                .font(.system(size: 8, weight: .bold))
+                                .foregroundStyle(.white.opacity(0.65))
+                                .frame(width: 16, height: 16)
                                 .background(Circle().fill(Color.white.opacity(0.12)))
                         }
                         .buttonStyle(.plain)
@@ -158,18 +158,22 @@ public struct NotificationRow: View {
 
                 if !item.body.isEmpty {
                     Text(item.body)
-                        .font(.system(size: 11))
+                        .font(.system(size: 10, design: .monospaced))
                         .foregroundStyle(.white.opacity(0.75))
                         .lineLimit(2)
                         .multilineTextAlignment(.leading)
                 }
             }
         }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 7)
+        .padding(.horizontal, 8)
+        .padding(.vertical, 5)
         .background(
-            RoundedRectangle(cornerRadius: 8)
-                .fill(isHovered ? Color.white.opacity(0.08) : Color.white.opacity(0.03))
+            RoundedRectangle(cornerRadius: 6, style: .continuous)
+                .fill(isHovered ? Color.white.opacity(0.08) : Color.white.opacity(0.025))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 6, style: .continuous)
+                .stroke(Color.white.opacity(isHovered ? 0.08 : 0), lineWidth: 0.5)
         )
         .contentShape(Rectangle())
         .onHover { isHovered = $0 }
@@ -228,14 +232,14 @@ public struct NotificationStackCard: View {
                                 isClearConfirming = false
                             }
                         }
-                        .font(.system(size: 10, weight: .bold))
+                        .font(.system(size: 9.5, weight: .bold, design: .monospaced))
                         .foregroundStyle(.red)
                         .buttonStyle(.plain)
 
                         Button("Batal") {
                             withAnimation { isClearConfirming = false }
                         }
-                        .font(.system(size: 10))
+                        .font(.system(size: 9.5, design: .monospaced))
                         .foregroundStyle(.white.opacity(0.5))
                         .buttonStyle(.plain)
                     }
@@ -244,7 +248,7 @@ public struct NotificationStackCard: View {
                         withAnimation { isClearConfirming = true }
                     }) {
                         Text("Hapus Semua")
-                            .font(.system(size: 10, weight: .medium))
+                            .font(.system(size: 9.5, weight: .medium, design: .monospaced))
                             .foregroundStyle(.white.opacity(0.5))
                     }
                     .buttonStyle(.plain)
@@ -280,7 +284,7 @@ public struct NotificationStackCard: View {
                             Image(systemName: "chevron.up")
                                 .font(.system(size: 9, weight: .bold))
                             Text("Tutup Stack")
-                                .font(.system(size: 10, weight: .medium))
+                                .font(.system(size: 9.5, weight: .medium, design: .monospaced))
                         }
                         .foregroundStyle(.white.opacity(0.6))
                         .padding(.vertical, 4)
@@ -328,7 +332,7 @@ public struct NotificationStackCard: View {
                         }) {
                             HStack(spacing: 3) {
                                 Text("+\(store.items.count - 1) lainnya")
-                                    .font(.system(size: 9.5, weight: .semibold, design: .rounded))
+                                    .font(.system(size: 9, weight: .semibold, design: .monospaced))
                                 Image(systemName: "chevron.down")
                                     .font(.system(size: 7.5, weight: .bold))
                             }
@@ -372,28 +376,25 @@ public struct NotificationListView: View {
     }
 
     public var body: some View {
-        VStack(spacing: 8) {
-            // Header
+        VStack(spacing: 6) {
+            // Header Bar (matching Spotify tab header style)
             HStack(spacing: 6) {
-                ZStack {
+                HStack(spacing: 5) {
                     Circle()
                         .fill(Color(red: 0.15, green: 0.78, blue: 0.35))
-                        .frame(width: 16, height: 16)
-                    Image(systemName: "message.fill")
-                        .font(.system(size: 8, weight: .bold))
-                        .foregroundStyle(.white)
+                        .frame(width: 5, height: 5)
+                    Text("WHATSAPP")
+                        .font(.system(size: 9, weight: .bold, design: .monospaced))
+                        .tracking(0.8)
+                        .foregroundStyle(Color(red: 0.15, green: 0.78, blue: 0.35))
                 }
-
-                Text("WhatsApp Notifications")
-                    .font(.system(size: 12, weight: .bold, design: .monospaced))
-                    .foregroundStyle(.white)
 
                 if !store.items.isEmpty {
                     Text("\(store.items.count)")
-                        .font(.system(size: 10, weight: .bold, design: .monospaced))
-                        .padding(.horizontal, 6)
-                        .padding(.vertical, 1.5)
-                        .background(Capsule().fill(Color(red: 0.15, green: 0.78, blue: 0.35).opacity(0.25)))
+                        .font(.system(size: 8.5, weight: .bold, design: .monospaced))
+                        .padding(.horizontal, 5)
+                        .padding(.vertical, 1)
+                        .background(Capsule().fill(Color(red: 0.15, green: 0.78, blue: 0.35).opacity(0.2)))
                         .foregroundStyle(Color(red: 0.15, green: 0.78, blue: 0.35))
                 }
 
@@ -401,21 +402,21 @@ public struct NotificationListView: View {
 
                 if !store.items.isEmpty {
                     if isClearConfirming {
-                        HStack(spacing: 4) {
-                            Button("Konfirmasi Hapus?") {
+                        HStack(spacing: 5) {
+                            Button("HAPUS?") {
                                 withAnimation(.easeInOut(duration: 0.2)) {
                                     store.clearAll()
                                     isClearConfirming = false
                                 }
                             }
-                            .font(.system(size: 10.5, weight: .bold))
+                            .font(.system(size: 8.5, weight: .bold, design: .monospaced))
                             .foregroundStyle(.red)
                             .buttonStyle(.plain)
 
-                            Button("Batal") {
+                            Button("BATAL") {
                                 withAnimation { isClearConfirming = false }
                             }
-                            .font(.system(size: 10.5))
+                            .font(.system(size: 8.5, design: .monospaced))
                             .foregroundStyle(.white.opacity(0.5))
                             .buttonStyle(.plain)
                         }
@@ -423,42 +424,39 @@ public struct NotificationListView: View {
                         Button(action: {
                             withAnimation { isClearConfirming = true }
                         }) {
-                            Text("Hapus Semua")
-                                .font(.system(size: 11, weight: .medium))
-                                .foregroundStyle(.white.opacity(0.6))
+                            Text("HAPUS SEMUA")
+                                .font(.system(size: 8.5, weight: .semibold, design: .monospaced))
+                                .foregroundStyle(.white.opacity(0.5))
                         }
                         .buttonStyle(.plain)
                         .help("Hapus semua notifikasi WhatsApp")
                     }
                 }
             }
-            .padding(.horizontal, 14)
-            .padding(.top, 8)
+            .padding(.horizontal, 2)
 
-            // Content
+            Rectangle()
+                .fill(.white.opacity(0.06))
+                .frame(height: 1)
+
+            // Content Area (Fixed height matching Spotify card, scrollable inside)
             if store.items.isEmpty {
-                VStack(spacing: 10) {
+                VStack(spacing: 4) {
                     Image(systemName: "bell.slash")
-                        .font(.system(size: 26))
-                        .foregroundStyle(.white.opacity(0.3))
-                        .padding(.top, 30)
-
-                    Text("Belum ada notifikasi")
-                        .font(.system(size: 12, weight: .medium))
-                        .foregroundStyle(.white.opacity(0.5))
-
-                    Text("Notifikasi pesan WhatsApp Desktop akan muncul di sini.")
-                        .font(.system(size: 10.5))
-                        .foregroundStyle(.white.opacity(0.35))
+                        .font(.system(size: 14, weight: .medium))
+                        .foregroundStyle(Color(red: 0.15, green: 0.78, blue: 0.35).opacity(0.85))
+                    Text("Tidak ada notifikasi")
+                        .font(.system(size: 11, weight: .bold, design: .monospaced))
+                        .foregroundStyle(.white)
+                    Text("Pesan baru WhatsApp Desktop akan muncul di sini.")
+                        .font(.system(size: 9, design: .monospaced))
+                        .foregroundStyle(.white.opacity(0.45))
                         .multilineTextAlignment(.center)
-                        .padding(.horizontal, 30)
-
-                    Spacer(minLength: 20)
                 }
-                .frame(maxWidth: .infinity, minHeight: 140)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
-                ScrollView(.vertical, showsIndicators: false) {
-                    LazyVStack(spacing: 5) {
+                ScrollView(.vertical) {
+                    LazyVStack(spacing: 4) {
                         ForEach(store.items) { item in
                             NotificationRow(
                                 item: item,
@@ -467,11 +465,22 @@ public struct NotificationListView: View {
                             )
                         }
                     }
-                    .padding(.horizontal, 10)
-                    .padding(.bottom, 12)
+                    .padding(.vertical, 1)
                 }
+                .scrollIndicators(.automatic)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
         }
+        .padding(10)
+        .frame(height: 112)
+        .background(.white.opacity(0.045), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .stroke(.white.opacity(0.08), lineWidth: 1)
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 4)
+        .fixedSize(horizontal: false, vertical: true)
         .onAppear {
             store.markAllSeen()
         }

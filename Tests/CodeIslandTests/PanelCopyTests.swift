@@ -19,7 +19,7 @@ final class PanelCopyTests: XCTestCase {
     }
 
     func testGroupingTabsNameWhatTheyDo() {
-        XCTAssertEqual(SessionGroupingTab.all.map(\.tag), ["all", "status", "cli"])
+        XCTAssertEqual(SessionGroupingTab.all.map(\.tag), ["all", "notifications", "status", "cli", "spotify"])
         for tab in SessionGroupingTab.all {
             XCTAssertNotNil(L10n.strings["en"]?[tab.nameKey], "\(tab.pixelLabel) has no spelled-out name")
         }

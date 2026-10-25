@@ -60,10 +60,10 @@ final class L10n: ObservableObject {
 
         // General
         "launch_at_login": "Launch at Login",
-        "allow_horizontal_drag": "Allow Horizontal Drag",
+        "allow_horizontal_drag": "Allow Notch Repositioning",
         "avoid_menu_bar_icons": "Avoid Menu Bar Icons",
         "avoid_menu_bar_icons_desc": "On external screens, automatically slide the island into the nearest clear gap when it would overlap third-party menu bar icons (e.g. Bartender). Dragging the island manually overrides this.",
-        "allow_horizontal_drag_desc": "Enable dragging the panel left or right along the menu bar",
+        "allow_horizontal_drag_desc": "Long-press the notch to enter drag mode, then move it vertically and horizontally",
         "display": "Display",
         "auto": "Auto",
         "builtin_display": "Built-in Display",
@@ -665,10 +665,10 @@ final class L10n: ObservableObject {
 
         // General
         "launch_at_login": "Beim Anmelden starten",
-        "allow_horizontal_drag": "Horizontales Ziehen erlauben",
+        "allow_horizontal_drag": "Notch-Neupositionierung erlauben",
         "avoid_menu_bar_icons": "Menüleisten-Symbolen ausweichen",
         "avoid_menu_bar_icons_desc": "Auf externen Bildschirmen weicht die Insel automatisch in die nächste freie Lücke aus, wenn sie Menüleisten-Symbole von Drittanbietern (z. B. Bartender) überlappen würde. Manuelles Ziehen hat Vorrang.",
-        "allow_horizontal_drag_desc": "Panel entlang der Menüleiste nach links oder rechts ziehen",
+        "allow_horizontal_drag_desc": "Notch gedrückt halten, um sie vertikal und horizontal frei zu verschieben",
         "display": "Display",
         "auto": "Automatisch",
         "builtin_display": "Integriertes Display",
@@ -1270,10 +1270,10 @@ final class L10n: ObservableObject {
 
         // General
         "launch_at_login": "登录时打开",
-        "allow_horizontal_drag": "允许水平拖动面板",
+        "allow_horizontal_drag": "允许自由调整灵动岛位置",
         "avoid_menu_bar_icons": "自动避开菜单栏图标",
         "avoid_menu_bar_icons_desc": "在外接显示器上，当灵动岛会压住第三方菜单栏图标（如 Bartender）时，自动左右平移到最近的空档。手动拖动过位置后以手动位置优先。",
-        "allow_horizontal_drag_desc": "开启后可沿菜单栏左右拖动面板位置",
+        "allow_horizontal_drag_desc": "长按灵动岛开启拖动模式，可上下左右自由调整位置",
         "display": "显示器",
         "auto": "自动",
         "builtin_display": "内建显示器",
@@ -1875,10 +1875,10 @@ final class L10n: ObservableObject {
 
         // General
         "launch_at_login": "登入時啟動",
-        "allow_horizontal_drag": "允許水平拖曳面板",
+        "allow_horizontal_drag": "允許自由調整靈動島位置",
         "avoid_menu_bar_icons": "自動避開選單列圖示",
         "avoid_menu_bar_icons_desc": "在外接顯示器上，當靈動島會壓住第三方選單列圖示（如 Bartender）時，自動左右平移到最近的空檔。手動拖曳過位置後以手動位置優先。",
-        "allow_horizontal_drag_desc": "開啟後可沿選單列左右拖曳面板位置",
+        "allow_horizontal_drag_desc": "長按靈動島開啟拖動模式，可上下左右自由調整位置",
         "display": "顯示器",
         "auto": "自動",
         "builtin_display": "內建顯示器",
@@ -2480,10 +2480,10 @@ final class L10n: ObservableObject {
 
         // General
         "launch_at_login": "ログイン時に起動",
-        "allow_horizontal_drag": "横方向ドラッグを許可",
+        "allow_horizontal_drag": "ノッチの自由な位置移動を許可",
         "avoid_menu_bar_icons": "メニューバーアイコンを回避",
         "avoid_menu_bar_icons_desc": "外部ディスプレイでアイランドがサードパーティのメニューバーアイコン（Bartender など）と重なる場合、最も近い空きスペースへ自動的に移動します。手動でドラッグした位置が優先されます。",
-        "allow_horizontal_drag_desc": "パネルをメニューバーに沿って左右へドラッグできるようにします",
+        "allow_horizontal_drag_desc": "ノッチを長押ししてドラッグモードを有効にし、上下左右に移動できます",
         "display": "ディスプレイ",
         "auto": "自動",
         "builtin_display": "内蔵ディスプレイ",
@@ -3085,10 +3085,10 @@ final class L10n: ObservableObject {
 
         // General
         "launch_at_login": "로그인 시 실행",
-        "allow_horizontal_drag": "가로 드래그 허용",
+        "allow_horizontal_drag": "노치 위치 자유 이동 허용",
         "avoid_menu_bar_icons": "메뉴 막대 아이콘 피하기",
         "avoid_menu_bar_icons_desc": "외장 디스플레이에서 아일랜드가 서드파티 메뉴 막대 아이콘(Bartender 등)과 겹칠 경우 가장 가까운 빈 공간으로 자동 이동합니다. 수동으로 드래그한 위치가 우선합니다.",
-        "allow_horizontal_drag_desc": "패널을 메뉴 막대를 따라 좌우로 드래그할 수 있게 합니다",
+        "allow_horizontal_drag_desc": "노치를 길게 눌러 이동 모드를 활성화한 뒤 상하좌우로 이동할 수 있습니다",
         "display": "디스플레이",
         "auto": "자동",
         "builtin_display": "내장 디스플레이",
@@ -3690,10 +3690,10 @@ final class L10n: ObservableObject {
 
         // General
         "launch_at_login": "Girişte Aç",
-        "allow_horizontal_drag": "Yatay Sürüklemeye İzin Ver",
+        "allow_horizontal_drag": "Çentik Konumlandırmaya İzin Ver",
         "avoid_menu_bar_icons": "Menü Çubuğu Simgelerinden Kaçın",
         "avoid_menu_bar_icons_desc": "Harici ekranlarda ada, üçüncü taraf menü çubuğu simgeleriyle (ör. Bartender) çakışacaksa otomatik olarak en yakın boşluğa kayar. Elle sürüklenen konum önceliklidir.",
-        "allow_horizontal_drag_desc": "Paneli menü çubuğu boyunca sola veya sağa sürüklemeyi etkinleştir",
+        "allow_horizontal_drag_desc": "Sürükleme modunu açmak için çentiğe uzun basın, ardından dikey ve yatay olarak serbestçe taşıyın",
         "display": "Ekran",
         "auto": "Otomatik",
         "builtin_display": "Dahili Ekran",

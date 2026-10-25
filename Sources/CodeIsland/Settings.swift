@@ -35,6 +35,7 @@ enum SettingsKey {
     static let allowHorizontalDrag = "allowHorizontalDrag"
     static let avoidMenuBarIcons = "avoidMenuBarIcons"
     static let panelHorizontalOffset = "panelHorizontalOffset"
+    static let panelVerticalOffset = "panelVerticalOffset"
 
     // General - Behavior
     static let hideInFullscreen = "hideInFullscreen"
@@ -186,6 +187,7 @@ struct SettingsDefaults {
     static let allowHorizontalDrag = false
     static let avoidMenuBarIcons = true  // #219: dodge Bartender & friends on external screens
     static let panelHorizontalOffset = 0.0
+    static let panelVerticalOffset = 0.0
     static let hideInFullscreen = true
     static let hideWhenNoSession = false
     static let smartSuppress = true
@@ -298,6 +300,7 @@ class SettingsManager {
             SettingsKey.allowHorizontalDrag: SettingsDefaults.allowHorizontalDrag,
             SettingsKey.avoidMenuBarIcons: SettingsDefaults.avoidMenuBarIcons,
             SettingsKey.panelHorizontalOffset: SettingsDefaults.panelHorizontalOffset,
+            SettingsKey.panelVerticalOffset: SettingsDefaults.panelVerticalOffset,
             SettingsKey.hideInFullscreen: SettingsDefaults.hideInFullscreen,
             SettingsKey.hideWhenNoSession: SettingsDefaults.hideWhenNoSession,
             SettingsKey.smartSuppress: SettingsDefaults.smartSuppress,
@@ -405,6 +408,11 @@ class SettingsManager {
     var panelHorizontalOffset: Double {
         get { defaults.double(forKey: SettingsKey.panelHorizontalOffset) }
         set { defaults.set(newValue, forKey: SettingsKey.panelHorizontalOffset) }
+    }
+
+    var panelVerticalOffset: Double {
+        get { defaults.double(forKey: SettingsKey.panelVerticalOffset) }
+        set { defaults.set(newValue, forKey: SettingsKey.panelVerticalOffset) }
     }
 
     var hideInFullscreen: Bool {

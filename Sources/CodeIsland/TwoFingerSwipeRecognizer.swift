@@ -68,8 +68,8 @@ public struct TwoFingerSwipeStateMachine {
             }
 
             if axis == .horizontal {
-                let effectiveDelta = isInverted ? -accumulatedX : accumulatedX
-                return .tracking(offset: effectiveDelta * 0.4)
+                let trackingOffset = (isInverted ? accumulatedX : -accumulatedX) * 0.4
+                return .tracking(offset: trackingOffset)
             } else {
                 return .passThrough
             }
@@ -78,9 +78,9 @@ public struct TwoFingerSwipeStateMachine {
         if phase.contains(.ended) {
             defer { reset() }
             if axis == .horizontal {
-                let effectiveDelta = isInverted ? -accumulatedX : accumulatedX
-                if abs(effectiveDelta) >= Self.commitThreshold {
-                    return .commit(effectiveDelta < 0 ? .next : .previous)
+                let effectiveMotion = isInverted ? accumulatedX : -accumulatedX
+                if abs(effectiveMotion) >= Self.commitThreshold {
+                    return .commit(effectiveMotion > 0 ? .previous : .next)
                 } else {
                     return .cancel
                 }

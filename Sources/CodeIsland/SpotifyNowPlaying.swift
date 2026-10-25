@@ -537,65 +537,90 @@ struct SpotifyMiniCard: View {
 
     var body: some View {
         if let track = monitor.track {
-            Button {
-                onOpenFull?()
-            } label: {
-                HStack(spacing: 10) {
-                    SpotifyArtworkView(urlString: track.artworkURL, size: 36, cornerRadius: 6)
+            HStack(spacing: 10) {
+                SpotifyArtworkView(urlString: track.artworkURL, size: 36, cornerRadius: 6)
 
-                    VStack(alignment: .leading, spacing: 4) {
-                        HStack(spacing: 6) {
-                            Text(track.title)
-                                .font(.system(size: 11, weight: .bold, design: .monospaced))
-                                .foregroundStyle(.white)
-                                .lineLimit(1)
+                VStack(alignment: .leading, spacing: 4) {
+                    HStack(spacing: 6) {
+                        Text(track.title)
+                            .font(.system(size: 11, weight: .bold, design: .monospaced))
+                            .foregroundStyle(.white)
+                            .lineLimit(1)
 
-                            Text("·")
-                                .foregroundStyle(.white.opacity(0.3))
+                        Text("·")
+                            .foregroundStyle(.white.opacity(0.3))
 
-                            Text(track.artist)
-                                .font(.system(size: 10, weight: .medium, design: .monospaced))
-                                .foregroundStyle(.white.opacity(0.6))
-                                .lineLimit(1)
+                        Text(track.artist)
+                            .font(.system(size: 10, weight: .medium, design: .monospaced))
+                            .foregroundStyle(.white.opacity(0.6))
+                            .lineLimit(1)
 
-                            Spacer()
+                        Spacer()
 
-                            // Play/Pause button
+                        // Controls: Previous, Play/Pause, Next
+                        HStack(spacing: 4) {
+                            Button {
+                                monitor.previousTrack()
+                            } label: {
+                                Image(systemName: "backward.fill")
+                                    .font(.system(size: 8, weight: .semibold))
+                                    .foregroundStyle(.white.opacity(0.75))
+                                    .frame(width: 18, height: 18)
+                                    .background(Circle().fill(.white.opacity(0.08)))
+                            }
+                            .buttonStyle(.plain)
+                            .help("Previous Track")
+
                             Button {
                                 monitor.togglePlayPause()
                             } label: {
                                 Image(systemName: track.isPlaying ? "pause.fill" : "play.fill")
-                                    .font(.system(size: 10, weight: .bold))
+                                    .font(.system(size: 9, weight: .bold))
                                     .foregroundStyle(track.isPlaying ? Color(red: 0.12, green: 0.82, blue: 0.40) : .white)
-                                    .frame(width: 22, height: 22)
+                                    .frame(width: 20, height: 20)
                                     .background(Circle().fill(.white.opacity(0.08)))
                             }
                             .buttonStyle(.plain)
                             .help(track.isPlaying ? "Pause" : "Play")
-                        }
 
-                        ProgressView(value: track.position, total: max(track.duration, 1))
-                            .tint(Color(red: 0.12, green: 0.82, blue: 0.40))
-                            .scaleEffect(x: 1, y: 0.5, anchor: .center)
-
-                        if let line = monitor.currentLyricLine, !line.isEmpty {
-                            Text(line)
-                                .font(.system(size: 9, weight: .medium, design: .monospaced))
-                                .foregroundStyle(.white.opacity(0.85))
-                                .lineLimit(1)
-                                .truncationMode(.tail)
+                            Button {
+                                monitor.nextTrack()
+                            } label: {
+                                Image(systemName: "forward.fill")
+                                    .font(.system(size: 8, weight: .semibold))
+                                    .foregroundStyle(.white.opacity(0.75))
+                                    .frame(width: 18, height: 18)
+                                    .background(Circle().fill(.white.opacity(0.08)))
+                            }
+                            .buttonStyle(.plain)
+                            .help("Next Track")
                         }
                     }
-                }
-                .padding(.horizontal, 10)
-                .padding(.vertical, 8)
-                .background(.white.opacity(0.05), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-                .overlay {
-                    RoundedRectangle(cornerRadius: 10, style: .continuous)
-                        .stroke(Color(red: 0.12, green: 0.82, blue: 0.40).opacity(0.2), lineWidth: 1)
+
+                    ProgressView(value: track.position, total: max(track.duration, 1))
+                        .tint(Color(red: 0.12, green: 0.82, blue: 0.40))
+                        .scaleEffect(x: 1, y: 0.5, anchor: .center)
+
+                    if let line = monitor.currentLyricLine, !line.isEmpty {
+                        Text(line)
+                            .font(.system(size: 9, weight: .medium, design: .monospaced))
+                            .foregroundStyle(.white.opacity(0.85))
+                            .lineLimit(1)
+                            .truncationMode(.tail)
+                    }
                 }
             }
-            .buttonStyle(.plain)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 8)
+            .background(.white.opacity(0.05), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+            .overlay {
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .stroke(Color(red: 0.12, green: 0.82, blue: 0.40).opacity(0.2), lineWidth: 1)
+            }
+            .contentShape(Rectangle())
+            .onTapGesture {
+                onOpenFull?()
+            }
             .padding(.horizontal, 10)
             .padding(.top, 4)
             .padding(.bottom, 2)
